@@ -5,9 +5,9 @@
 
   **The Iconic Floating Combat Text Addon — Completely Reforged for Retail 12.x (Midnight), Classic Forever & All Classic Flavors!**
 
-  [![Code Quality](https://github.com/gOOvER/Parrot3/actions/workflows/quality.yml/badge.svg)](https://github.com/gOOvER/Parrot3/actions/workflows/quality.yml)
-  [![Release](https://github.com/gOOvER/Parrot3/actions/workflows/release.yml/badge.svg)](https://github.com/gOOvER/Parrot3/actions/workflows/release.yml)
-  [![GitHub Release](https://img.shields.io/github/v/release/gOOvER/Parrot3?include_prereleases&label=Version&color=brightgreen&logo=github)](https://github.com/gOOvER/Parrot3/releases/latest)
+  [![Code Quality](https://github.com/gOOvER/Parrot-Reforged/actions/workflows/quality.yml/badge.svg)](https://github.com/gOOvER/Parrot-Reforged/actions/workflows/quality.yml)
+  [![Release](https://github.com/gOOvER/Parrot-Reforged/actions/workflows/release.yml/badge.svg)](https://github.com/gOOvER/Parrot-Reforged/actions/workflows/release.yml)
+  [![GitHub Release](https://img.shields.io/github/v/release/gOOvER/Parrot-Reforged?include_prereleases&label=Version&color=brightgreen&logo=github)](https://github.com/gOOvER/Parrot-Reforged/releases/latest)
   [![CurseForge](https://img.shields.io/badge/CurseForge-Parrot%20Reforged-f16436?logo=curseforge&logoColor=white)](https://www.curseforge.com/wow/addons/parrot2)
   [![Wago.io](https://img.shields.io/badge/Wago.io-Parrot%20Reforged-c1272d?logo=wagtail&logoColor=white)](https://addons.wago.io/addons/parrot-reforged)
   [![WoWInterface](https://img.shields.io/badge/WoWInterface-24143-0078d7)](https://www.wowinterface.com/downloads/info24143.html)
