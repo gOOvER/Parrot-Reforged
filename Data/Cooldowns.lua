@@ -5,8 +5,8 @@ local L = LibStub("AceLocale-3.0"):GetLocale("Parrot")
 
 local newList, del = Parrot.newList, Parrot.del
 
-local GetSpellName = C_Spell.GetSpellName
-local GetSpellTexture = C_Spell.GetSpellTexture
+local GetSpellName = ns.Compat.GetSpellName
+local GetSpellTexture = ns.Compat.GetSpellTexture
 
 local db = nil
 local defaults = {
@@ -28,8 +28,6 @@ do
 			local spell = GetSpellName(id)
 			if spell then
 				spellGroups[spell] = name
-			else
-				print("Parrot: Cooldown spell missing:", id)
 			end
 		end
 	end
@@ -50,30 +48,34 @@ function module:OnEnable()
 	self:RegisterEvent("PLAYER_EQUIPMENT_CHANGED", "CheckItems")
 	self:RegisterEvent("SPELL_UPDATE_COOLDOWN", "CheckSpells")
 	self:RegisterEvent("SPELLS_CHANGED", "ResetSpells")
+	self:RegisterEvent("PLAYER_ENTERING_WORLD", "ResetSpells")
+	self:ResetSpells()
 end
 
 function module:CheckItems()
 	for i = 1, 19 do
-		local link = GetInventoryItemLink("player", i)
+		local link = ns.Compat.GetInventoryItemLink("player", i)
 		if link then
-			local start, duration = GetInventoryItemCooldown("player", i)
-			local oldLink = itemCooldowns[i]
-			if oldLink then
-				if start == 0 then -- cooldown expired
-					if oldLink == link then
-						local name = GetItemInfo(link)
-						Parrot:FirePrimaryTriggerCondition("Item cooldown ready", name)
-
-						--local info = newList(name, texture)
-						--Parrot:TriggerCombatEvent("Notification", "Skill cooldown finish", info)
-						--info = del(info)
+			local start, duration = ns.Compat.GetInventoryItemCooldown("player", i)
+			if start and duration then
+				local oldLink = itemCooldowns[i]
+				if oldLink then
+					if start == 0 then -- cooldown expired
+						if oldLink == link then
+							local name = ns.Compat.GetItemInfo(link) or link:match("%[(.-)%]")
+							if name then
+								Parrot:FirePrimaryTriggerCondition("Item cooldown ready", name)
+							end
+						end
+						itemCooldowns[i] = nil
 					end
-					itemCooldowns[i] = nil
+				elseif start > 0 and duration > 0 then -- cooldown started
+					itemCooldowns[i] = link
+					local remaining = duration - (GetTime() - start) + 0.1
+					if remaining > 0 and remaining <= 3600 then
+						self:ScheduleTimer("CheckItems", remaining)
+					end
 				end
-			elseif start > 0 then -- cooldown started
-				itemCooldowns[i] = link
-				local remaining = duration - (GetTime() - start) + 0.1
-				self:ScheduleTimer("CheckItems", remaining)
 			end
 		end
 	end
@@ -89,17 +91,17 @@ function module:ResetSpells(e)
 	wipe(spells)
 	wipe(spellCooldowns)
 	-- cache spells from our current spec plus racials
-	for tab = 1, 3 do -- general, class, spec
-		local tabInfo = C_SpellBook.GetSpellBookSkillLineInfo(tab)
-		for slot = 1, tabInfo.numSpellBookItems do
-			local index = tabInfo.itemIndexOffset + slot
-			local spellName, subSpellName = C_SpellBook.GetSpellBookItemName(index, Enum.SpellBookSpellBank.Player)
-			if tab > 1 or generalWhitelist[subSpellName] then
-				spells[spellName] = true
-				local cooldownInfo = C_SpellBook.GetSpellBookItemCooldown(index, Enum.SpellBookSpellBank.Player)
-				if cooldownInfo then
-					local start, duration = cooldownInfo.startTime, cooldownInfo.duration
-					if start and start > 0 and duration > db.threshold and not db.filters[spellName] then
+	local numLines = ns.Compat.GetNumSpellBookSkillLines()
+	for tab = 1, numLines do -- general (racials), class, spec
+		local tabInfo = ns.Compat.GetSpellBookSkillLineInfo(tab)
+		if tabInfo and tabInfo.numSpellBookItems then
+			for slot = 1, tabInfo.numSpellBookItems do
+				local index = (tabInfo.itemIndexOffset or 0) + slot
+				local spellName, subSpellName = ns.Compat.GetSpellBookItemName(index)
+				if spellName and (tab > 1 or generalWhitelist[subSpellName] or not ns.Compat.IsSpellBookItemPassive(index)) then
+					spells[spellName] = true
+					local start, duration = ns.Compat.GetSpellBookItemCooldown(index)
+					if start and start > 0 and duration and duration > db.threshold and not db.filters[spellName] then
 						spellCooldowns[spellName] = start
 					end
 				end
@@ -111,21 +113,19 @@ end
 function module:CheckSpells(e)
 	local expired = newList()
 	for spellName in next, spells do
-		local cooldownInfo = C_Spell.GetSpellCooldown(spellName)
-		if cooldownInfo then
-			local start, duration = cooldownInfo.startTime, cooldownInfo.duration
+		local start, duration = ns.Compat.GetSpellCooldown(spellName)
+		if start and duration then
 			if spellCooldowns[spellName] and (start == 0 or spellCooldowns[spellName] == start) then
 				if start == 0 then
 					expired[spellName] = true
 					spellCooldowns[spellName] = nil
 				end
-			elseif start and start > 0 and duration > db.threshold and not db.filters[spellName] then
+			elseif start > 0 and duration > db.threshold and not db.filters[spellName] then
 				spellCooldowns[spellName] = start
 				local remaining = duration - (GetTime() - start) + 0.1
-				self:ScheduleTimer("CheckSpells", remaining)
-				-- can probably improve this to schedule checking the single spell
-				-- that triggered the cooldown, but then I would have to move the
-				-- "tree reset" logic here, which would be run more frequently
+				if remaining > 0 and remaining <= 3600 then
+					self:ScheduleTimer("CheckSpells", remaining)
+				end
 			end
 		end
 	end
@@ -140,7 +140,7 @@ function module:CheckSpells(e)
 		end
 
 		if count > 4 then -- don't spam if something reset a bunch of spells
-			local tabInfo = C_SpellBook.GetSpellBookSkillLineInfo(2) -- class name
+			local tabInfo = ns.Compat.GetSpellBookSkillLineInfo(2) or ns.Compat.GetSpellBookSkillLineInfo(1) -- class name
 			if tabInfo then
 				local info = newList(L["%s Tree"]:format(tabInfo.name), tabInfo.iconID)
 				Parrot:TriggerCombatEvent("Notification", "Skill cooldown finish", info)
@@ -226,8 +226,8 @@ Parrot:RegisterSecondaryTriggerCondition {
 		parse = parseSpell,
 	},
 	check = function(param)
-		local cooldownInfo = C_Spell.GetSpellCooldown(param)
-		return cooldownInfo and cooldownInfo.startTime == 0
+		local start = ns.Compat.GetSpellCooldown(param)
+		return start ~= nil and start == 0
 	end,
 }
 
@@ -242,7 +242,7 @@ Parrot:RegisterSecondaryTriggerCondition {
 		parse = parseSpell,
 	},
 	check = function(param)
-		return IsUsableSpell(param)
+		return ns.Compat.IsSpellUsable(param)
 	end,
 }
 

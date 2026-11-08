@@ -7,8 +7,7 @@ local newList = Parrot.newList
 
 local bit_bor, bit_band = bit.bor, bit.band
 local UnitGUID, UnitPower = UnitGUID, UnitPower
-local GetComboPoints, UnitHasVehicleUI = GetComboPoints, UnitHasVehicleUI
-local GetSpellTexture = C_Spell.GetSpellTexture
+local GetSpellTexture = ns.Compat.GetSpellTexture
 
 local PET = _G.PET
 local INTERRUPT = _G.INTERRUPT
@@ -79,14 +78,23 @@ local PowerTypeParser = setmetatable({
 	[18] = _G.PAIN,
 }, { __index = function(self, key)
 	if key == ALTERNATE_POWER_INDEX then
-		local barID = UnitPowerBarID("player")
-		local name = GetUnitPowerBarStringsByID(barID)
-		return name
+		-- UnitPowerBarID / GetUnitPowerBarStringsByID may not be available in all WoW versions
+		if UnitPowerBarID and GetUnitPowerBarStringsByID then
+			local barID = UnitPowerBarID("player")
+			if barID and barID > 0 then
+				local name = GetUnitPowerBarStringsByID(barID)
+				if name and name ~= "" then
+					return name
+				end
+			end
+		end
+		return _G.POWER_TYPE_ALTERNATE_POWER or _G.ALTERNATE_POWER_INDEX_TOKEN or "Alternate Power"
 	end
 end })
 
 local coloredDamageAmount = function(info)
-	local damageType = SchoolParser[info.damageType or 1]
+	local dt = not ns.Compat.IsSecretValue(info.damageType) and info.damageType or 1
+	local damageType = SchoolParser[dt or 1]
 	local amount = Parrot:ShortenAmount(info.amount)
 
 	if db.damageTypes.color and db.damageTypes[damageType] then
@@ -105,22 +113,29 @@ local realDamageAmount = function(info)
 end
 
 local damageTypeString = function(info)
-	if not info.damageType or info.damageType == 0 then
+	if not info.damageType or ns.Compat.IsSecretValue(info.damageType) or info.damageType == 0 then
 		return ""
 	end
 	return GetSchoolString(info.damageType) or _G.STRING_SCHOOL_UNKNOWN
 end
 
 local sanitizedPowerAmount = function(info)
+	if not info.amount or ns.Compat.IsSecretValue(info.amount) then
+		return info.amount
+	end
 	return math.floor(10 * info.amount + 0.5) / 10
 end
 
 local classColorStrings = {}
 for k, v in next, _G.RAID_CLASS_COLORS do
-	classColorStrings[k] = ("|c%s%%s|r"):format(v.colorStr)
+	local colorStr = v.colorStr or ("ff%02x%02x%02x"):format((v.r or 1) * 255, (v.g or 1) * 255, (v.b or 1) * 255)
+	classColorStrings[k] = ("|c%s%%s|r"):format(colorStr)
 end
 
 local powerTypeString = function(info)
+	if not info.powerType or ns.Compat.IsSecretValue(info.powerType) then
+		return UNKNOWN
+	end
 	return PowerTypeParser[info.powerType] or UNKNOWN
 end
 
@@ -128,17 +143,23 @@ end
 -- functions to retrieve player-names (to hide realm-names)
 --]]
 local function retrieveSourceName(info)
-	if db.hideUnitNames or info.sourceName == "" or info.hideCaster then
+	if db.hideUnitNames or not info.sourceName or info.hideCaster then
+		return "__NONAME__"
+	end
+	if ns.Compat.IsSecretValue(info.sourceName) then
+		return info.sourceName
+	end
+	if info.sourceName == "" then
 		return "__NONAME__"
 	end
 
-	if info.sourceID and info.sourceID ~= "" then
-		local _, class, _, _, _, name = GetPlayerInfoByGUID(info.sourceID)
-		if class then
+	if info.sourceID and not ns.Compat.IsSecretValue(info.sourceID) and info.sourceID ~= "" then
+		local ok, _, class, _, _, _, name = pcall(GetPlayerInfoByGUID, info.sourceID)
+		if ok and class and name and not ns.Compat.IsSecretValue(name) then
 			if not db.hideRealm then
 				name = info.sourceName
 			end
-			if db.classcolor then
+			if db.classcolor and not ns.Compat.IsSecretValue(class) and classColorStrings[class] then
 				name = classColorStrings[class]:format(name)
 			end
 			return name
@@ -149,17 +170,23 @@ local function retrieveSourceName(info)
 end
 
 local function retrieveDestName(info)
-	if db.hideUnitNames or info.recipientName == "" or info.hideCaster then
+	if db.hideUnitNames or not info.recipientName or info.hideCaster then
+		return "__NONAME__"
+	end
+	if ns.Compat.IsSecretValue(info.recipientName) then
+		return info.recipientName
+	end
+	if info.recipientName == "" then
 		return "__NONAME__"
 	end
 
-	if info.recipientID and info.recipientID ~= "" then
-		local _, class, _, _, _, name = GetPlayerInfoByGUID(info.recipientID)
-		if class then
+	if info.recipientID and not ns.Compat.IsSecretValue(info.recipientID) and info.recipientID ~= "" then
+		local ok, _, class, _, _, _, name = pcall(GetPlayerInfoByGUID, info.recipientID)
+		if ok and class and name and not ns.Compat.IsSecretValue(name) then
 			if not db.hideRealm then
 				name = info.recipientName
 			end
-			if db.classcolor then
+			if db.classcolor and not ns.Compat.IsSecretValue(class) and classColorStrings[class] then
 				name = classColorStrings[class]:format(name)
 			end
 			return name
@@ -191,20 +218,35 @@ local dumbTriggerSpellOverride = {
 	[27576] = GetSpellTexture(1329), -- Mutilate Off-Hand
 	[222031] = GetSpellTexture(162794), -- Chaos Strike
 	[199547] = GetSpellTexture(162794), -- Chaos Strike
+	-- Shaman Windfury Attack / Totem / Ancestral Awakening (Classic/TBC/Wrath/Cata)
+	[25504] = GetSpellTexture(8232) or 136018, -- Windfury Attack MH -> Windfury Weapon
+	[33750] = GetSpellTexture(8232) or 136018, -- Windfury Attack OH -> Windfury Weapon
+	[10444] = GetSpellTexture(8024) or 135814, -- Flametongue Attack -> Flametongue Weapon
+	[8349] = GetSpellTexture(1535) or 135824, -- Fire Nova Totem R1
+	[8502] = GetSpellTexture(8498) or 135824, -- Fire Nova Totem R2
+	[8503] = GetSpellTexture(8499) or 135824, -- Fire Nova Totem R3
+	[11306] = GetSpellTexture(11314) or 135824, -- Fire Nova Totem R4
+	[11307] = GetSpellTexture(11315) or 135824, -- Fire Nova Totem R5
+	[25535] = GetSpellTexture(25546) or 135824, -- Fire Nova Totem R6
+	[25537] = GetSpellTexture(25547) or 135824, -- Fire Nova Totem R7
+	[52752] = GetSpellTexture(51558) or 237574, -- Ancestral Awakening
 }
 
 --[[
 -- helperfunction to retrieve an icon
 --]]
 local function retrieveIconFromAbilityName(info)
-	return dumbTriggerSpellOverride[info.spellID] or GetSpellTexture(info.spellID or info.abilityName)
+	local spellID = not ns.Compat.IsSecretValue(info.spellID) and info.spellID or nil
+	local abilityName = not ns.Compat.IsSecretValue(info.abilityName) and info.abilityName or nil
+	return (spellID and dumbTriggerSpellOverride[spellID]) or GetSpellTexture(spellID or abilityName)
 end
 
 --[[
 -- function to retrieve a localized miss reason
 --]]
 local function retrieveMissType(info)
-	return _G["ACTION_SPELL_MISSED_"..(info.missType or "")] or _G.ACTION_SPELL_MISSED_MISS
+	local mt = not ns.Compat.IsSecretValue(info.missType) and info.missType or ""
+	return _G["ACTION_SPELL_MISSED_"..(mt or "")] or _G.ACTION_SPELL_MISSED_MISS
 end
 
 --[[
@@ -747,7 +789,9 @@ Parrot:RegisterCombatEvent{
 	},
 	tagTranslations = {
 		Name = retrieveSourceName,
-		Amount = damageAmount,
+		Amount = coloredDamageAmount,
+		Skill = retrieveAbilityName,
+		Icon = retrieveIconFromAbilityName,
 	},
 	tagTranslationsHelp = {
 		Name = L["The name of the enemy that attacked you."],
@@ -1165,7 +1209,9 @@ Parrot:RegisterCombatEvent{
 	},
 	tagTranslations = {
 		Name = retrieveSourceName,
-		Amount = damageAmount,
+		Amount = coloredDamageAmount,
+		Skill = retrieveAbilityName,
+		Icon = retrieveIconFromAbilityName,
 	},
 	tagTranslationsHelp = {
 		Name = L["The name of the enemy that attacked your pet."],
@@ -1432,7 +1478,9 @@ Parrot:RegisterCombatEvent{
 	},
 	tagTranslations = {
 		Name = retrieveDestName,
-		Amount = damageAmount,
+		Amount = coloredDamageAmount,
+		Skill = retrieveAbilityName,
+		Icon = retrieveIconFromAbilityName,
 	},
 	tagTranslationsHelp = {
 		Name = L["The name of the enemy you attacked."],
@@ -1816,7 +1864,9 @@ Parrot:RegisterCombatEvent{
 	},
 	tagTranslations = {
 		Name = retrieveDestName,
-		Amount = damageAmount,
+		Amount = coloredDamageAmount,
+		Skill = retrieveAbilityName,
+		Icon = retrieveIconFromAbilityName,
 	},
 	tagTranslationsHelp = {
 		Name = L["The name of the enemy your pet attacked."],
@@ -1981,7 +2031,7 @@ Parrot:RegisterCombatEvent{
 	tagTranslationsHelp = petOutHealTagTranslationsHelp,
 	throttle = hotThrottle,
 	color = "00ff00", -- green
-	filterType = { "Incoming heals", 'realAmount' },
+	filterType = { "Outgoing heals", 'realAmount' },
 }
 
 --[[============================================================================
@@ -2162,8 +2212,9 @@ Parrot:RegisterCombatEvent{
 --============================================================================]]
 
 do
+	local SafeNumber = ns.Compat.SafeNumber
 	local function getMaxCP()
-		local max = UnitPowerMax("player", 4) or 5
+		local max = SafeNumber(UnitPowerMax("player", 4)) or 5
 		local real_max = max
 		if max == 8 then max = 5 end -- Anticipation talent: 8 CP but finishers still use a max of 5
 		return max, real_max
@@ -2171,8 +2222,8 @@ do
 
 	local cur = 0
 	local function parseCPGain()
-		local num = UnitHasVehicleUI("player") and GetComboPoints("vehicle") or UnitPower("player", 4)
-		if cur == num then return end
+		local num = SafeNumber(UnitPower("player", 4))
+		if not num or cur == num then return end
 		cur = num
 		if num > 0 and num < getMaxCP() then
 			return newList(num)
@@ -2181,7 +2232,8 @@ do
 
 	local prev = 0
 	local function parseCPFull()
-		local num = UnitHasVehicleUI("player") and GetComboPoints("vehicle") or UnitPower("player", 4)
+		local num = SafeNumber(UnitPower("player", 4))
+		if not num then return end
 		local max, real_max = getMaxCP()
 		local t = GetTime()
 		if num == real_max and t-prev < 0.1 then return end -- UNIT_POWER fires twice at max

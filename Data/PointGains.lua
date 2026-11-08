@@ -9,7 +9,7 @@ local Deformat = Parrot.Deformat
 local currentXP = 0
 
 function module:OnEnable()
-	currentXP = UnitXP("player")
+	currentXP = ns.Compat.SafeNumber(UnitXP("player")) or 0
 end
 
 -- Currency
@@ -24,18 +24,18 @@ local function parseCurrencyUpdate(chatmsg)
 	end
 
 	if currency then
-		local currencyInfo = C_CurrencyInfo.GetCurrencyInfoFromLink(currency)
-		local name = currencyInfo.name
-		if name == "" then return end
-		local color = ITEM_QUALITY_COLORS[currencyInfo.quality]
-		if color then
+		local currencyInfo = ns.Compat.GetCurrencyInfoFromLink(currency)
+		local name = (currencyInfo and currencyInfo.name ~= "" and currencyInfo.name) or currency:match("%[(.-)%]")
+		if not name then return end
+		local color = currencyInfo and currencyInfo.quality and ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[currencyInfo.quality]
+		if color and color.hex then
 			name = ("%s%s|r"):format(color.hex, name)
 		end
 		return newDict(
 			"currency", name,
 			"amount", amount or 1,
-			"total", currencyInfo.quantity,
-			"icon", currencyInfo.iconFileID
+			"total", (currencyInfo and currencyInfo.quantity) or 0,
+			"icon", currencyInfo and currencyInfo.iconFileID
 		)
 	end
 end
@@ -210,7 +210,8 @@ Parrot:RegisterCombatEvent{
 local XP = _G.XP
 
 local function parseXPUpdate()
-	local newXP = UnitXP("player")
+	local newXP = ns.Compat.SafeNumber(UnitXP("player"))
+	if not newXP then return end
 	local delta = newXP - currentXP
 	if delta > 0 then
 		local info = newDict("amount", delta)
@@ -238,41 +239,3 @@ Parrot:RegisterCombatEvent{
 	},
 }
 
--- Artifact Power gains
-local ARTIFACT_XP_GAIN = _G.ARTIFACT_XP_GAIN
-
-local function parseAPUpdate(chatmsg)
-	local itemLink, amount = Deformat(chatmsg, ARTIFACT_XP_GAIN)
-	if itemLink and amount then
-		local name, _, quality, _, _, _, _, _, _, texture = GetItemInfo(itemLink)
-		local color = ITEM_QUALITY_COLORS[quality]
-		if color then
-			name = ("%s%s|r"):format(color.hex, name)
-		end
-		return newDict(
-			"name", name,
-			"amount", amount,
-			"icon", texture
-		)
-	end
-end
-
-Parrot:RegisterCombatEvent{
-	category = "Notification",
-	name = "Artifact power gains",
-	localName = L["Artifact power gains"],
-	defaultTag = "[Name] +[Amount] " .. L["AP"],
-	tagTranslations = {
-		Name = "name",
-		Amount = "amount",
-		Icon = "icon",
-	},
-	tagTranslationsHelp = {
-		Name = L["The name of the item."],
-		Amount = L["The amount of experience points gained."],
-	},
-	color = "e5cc99",
-	events = {
-		CHAT_MSG_SYSTEM = { parse = parseAPUpdate },
-	},
-}

@@ -1,28 +1,62 @@
 package-as: Parrot
-wowi-archive-previous: no
+enable-nolib-creation: yes
+enable-toc-creation: yes
 
 externals:
-  Libs/LibStub:
-    url: https://repos.wowace.com/wow/libstub/trunk
-    tag: '1.0'
-  Libs/CallbackHandler-1.0:
-    url: https://repos.wowace.com/wow/callbackhandler/trunk/CallbackHandler-1.0
-    tag: latest
-  Libs/AceAddon-3.0: https://repos.wowace.com/wow/ace3/trunk/AceAddon-3.0
-  Libs/AceConfig-3.0: https://repos.wowace.com/wow/ace3/trunk/AceConfig-3.0
-  Libs/AceDB-3.0: https://repos.wowace.com/wow/ace3/trunk/AceDB-3.0
-  Libs/AceDBOptions-3.0: https://repos.wowace.com/wow/ace3/trunk/AceDBOptions-3.0
-  Libs/AceEvent-3.0: https://repos.wowace.com/wow/ace3/trunk/AceEvent-3.0
-  Libs/AceGUI-3.0: https://repos.wowace.com/wow/ace3/trunk/AceGUI-3.0
-  Libs/AceLocale-3.0: https://repos.wowace.com/wow/ace3/trunk/AceLocale-3.0
-  Libs/AceTimer-3.0: https://repos.wowace.com/wow/ace3/trunk/AceTimer-3.0
-  Libs/LibSharedMedia-3.0: https://repos.wowace.com/wow/libsharedmedia-3-0/trunk/LibSharedMedia-3.0
-  Libs/LibDDI-1.0: https://repos.wowace.com/wow/libddi-1-0/trunk
-  Libs/LibSink-2.0: https://repos.wowace.com/wow/libsink-2-0/trunk/LibSink-2.0
-  Libs/LibDualSpec-1.0: https://repos.wowace.com/wow/libdualspec-1-0
+  # Ace3 (GitHub: WoWUIDev/Ace3)
+  libs/LibStub:
+    url: https://github.com/WoWUIDev/Ace3
+    path: LibStub
+  libs/CallbackHandler-1.0:
+    url: https://github.com/WoWUIDev/Ace3
+    path: CallbackHandler-1.0
+  libs/AceAddon-3.0:
+    url: https://github.com/WoWUIDev/Ace3
+    path: AceAddon-3.0
+  libs/AceEvent-3.0:
+    url: https://github.com/WoWUIDev/Ace3
+    path: AceEvent-3.0
+  libs/AceTimer-3.0:
+    url: https://github.com/WoWUIDev/Ace3
+    path: AceTimer-3.0
+  libs/AceDB-3.0:
+    url: https://github.com/WoWUIDev/Ace3
+    path: AceDB-3.0
+  libs/AceDBOptions-3.0:
+    url: https://github.com/WoWUIDev/Ace3
+    path: AceDBOptions-3.0
+  libs/AceLocale-3.0:
+    url: https://github.com/WoWUIDev/Ace3
+    path: AceLocale-3.0
+  libs/AceGUI-3.0:
+    url: https://github.com/WoWUIDev/Ace3
+    path: AceGUI-3.0
+  libs/AceConfig-3.0:
+    url: https://github.com/WoWUIDev/Ace3
+    path: AceConfig-3.0
 
-embedded-libraries:
-  - libdatabroker-1-1
+  # GitHub-hosted External Libraries
+  libs/LibDataBroker-1.1:
+    url: https://github.com/tekkub/libdatabroker-1-1
+
+  # WowAce-hosted External Libraries (no official GitHub upstream)
+  libs/LibDBIcon-1.0:
+    url: https://repos.wowace.com/wow/libdbicon-1-0/trunk/LibDBIcon-1.0
+  libs/LibSharedMedia-3.0:
+    url: https://repos.wowace.com/wow/libsharedmedia-3-0/trunk/LibSharedMedia-3.0
+  libs/AceGUI-3.0-SharedMediaWidgets:
+    url: https://repos.wowace.com/wow/ace-gui-3-0-shared-media-widgets/trunk/AceGUI-3.0-SharedMediaWidgets
+  libs/LibSink-2.0:
+    url: https://repos.wowace.com/wow/libsink-2-0/trunk/LibSink-2.0
+
+manual-changelog: CHANGELOG.md
 
 ignore:
-  - Locales/Babelfish.lua
+  - .github
+  - .gitignore
+  - .gitattributes
+  - .luacheckrc
+  - .pkgmeta
+  - README.md
+  - CHANGELOG.md
+  - LICENSE

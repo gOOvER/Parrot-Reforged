@@ -47,16 +47,26 @@ local function parse_CHAT_MSG_LOOT(chatmsg)
 		if not amount then
 			amount = 1
 		end
-		local name, _, quality, _, _, _, _, _, _, texture = GetItemInfo(itemLink)
-		local color = ITEM_QUALITY_COLORS[quality]
-		if color then
+		local name, _, quality, _, _, _, _, _, _, texture = ns.Compat.GetItemInfo(itemLink)
+		if not name then
+			name = itemLink:match("%[(.-)%]")
+			texture = ns.Compat.GetItemIconByID(itemLink)
+		end
+		if not name then return end
+		local color = quality and ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[quality]
+		if color and color.hex then
 			name = ("%s%s|r"):format(color.hex, name)
+		elseif not quality then
+			local linkColor = itemLink:match("^(|c%x%x%x%x%x%x%x%x)")
+			if linkColor then
+				name = ("%s%s|r"):format(linkColor, name)
+			end
 		end
 
 		return newDict(
 			"name", name,
 			"amount", amount,
-			"total", GetItemCount(itemLink) + amount,
+			"total", ns.Compat.GetItemCount(itemLink) + amount,
 			"icon", texture
 		)
 	end

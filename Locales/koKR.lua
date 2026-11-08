@@ -1,4 +1,4 @@
-local L = LibStub("AceLocale-3.0"):NewLocale("Parrot", "koKR")
+﻿local L = LibStub("AceLocale-3.0"):NewLocale("Parrot", "koKR")
 if not L then return end
 
 L[" (%d crits)"] = " (%d 치명타)"
@@ -216,7 +216,6 @@ L["Item buff gains"] = "아이템 강화 효과 획득"
 L["Item cooldown ready"] = "아이템 재사용 대기시간 준비"
 L["Killing Blow!"] = "죽임!"
 L["Killing blows"] = "결정타"
--- L["Layering of the scrolling text relative to other frames."] = "Layering of the scrolling text relative to other frames."
 L["Leave combat"] = "전투 종료"
 L["Left"] = "좌측"
 L["Left, clockwise"] = "좌측, 시계 방향"

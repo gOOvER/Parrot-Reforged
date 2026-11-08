@@ -1,4 +1,4 @@
-local L = LibStub("AceLocale-3.0"):NewLocale("Parrot", "frFR")
+﻿local L = LibStub("AceLocale-3.0"):NewLocale("Parrot", "frFR")
 if not L then return end
 
 L[" (%d crits)"] = " (%d crits)"
@@ -216,7 +216,6 @@ L["Item buff gains"] = "Buff d'objet : gain"
 L["Item cooldown ready"] = "Objet prêt"
 L["Killing Blow!"] = "Coup fatal !"
 L["Killing blows"] = "Coups fatals"
--- L["Layering of the scrolling text relative to other frames."] = "Layering of the scrolling text relative to other frames."
 L["Leave combat"] = "Fin combat"
 L["Left"] = "Gauche"
 L["Left, clockwise"] = "Gauche, horaire"
@@ -578,7 +577,6 @@ L["What text this event modifier shows."] = "Définit le texte à afficher pour 
 L["What timespan to merge events within.\nNote: a time of 0s means no throttling will occur."] = "La fenêtre temporelle au cours de laquelle les événements seront fusionnés.\nNote : aucune fusion n'aura lieue en cas de réglage sur 0."
 L["When all of these conditions apply, the trigger will be shown."] = "Lorsque toutes ces conditions sont remplies, le déclencheur s'affichera."
 L["When any of these conditions apply, the secondary conditions are checked."] = "Lorsqu'au moins une de ces conditions est remplie, les conditions secondaires seront consultées."
--- L["Whether Parrot should control the default interface's options below.\nThese settings always override manual changes to the default interface options."] = ""
 L["Whether all events in this category are enabled."] = "Afficher tous les événements de cette catégorie."
 L["Whether events involving your guardian(s) (totems, ...) should be displayed"] = "Autorise l'affichage des actions impliquants vos gardiens, comme par exemple vos totems."
 L["Whether the current event should be classified as \"Sticky\""] = "Afficher cet événement en évidence."

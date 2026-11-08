@@ -169,7 +169,7 @@ local function showOffsetBox(k)
 	end
 	local offsetBox = offsetBoxes[k]
 	if not offsetBox then
-		offsetBox = CreateFrame("Button", "ParrotScrollAreasOffsetBox" .. k, UIParent)
+		offsetBox = CreateFrame("Button", "ParrotScrollAreasOffsetBox" .. k, UIParent, BackdropTemplateMixin and "BackdropTemplate" or nil)
 		local midPoint = CreateFrame("Frame", "$parentMidPoint", offsetBox)
 		offsetBox.midPoint = midPoint
 		midPoint:SetWidth(1)
@@ -183,6 +183,7 @@ local function showOffsetBox(k)
 		local bg = offsetBox:CreateTexture("$parentBackground", "BACKGROUND")
 		bg:SetColorTexture(0.7, 0.4, 0, 0.5) -- orange
 		bg:SetAllPoints(offsetBox)
+		offsetBox.bg = bg
 
 		local text = offsetBox:CreateFontString("$parentText", "ARTWORK", "GameFontHighlight")
 		offsetBox.text = text
@@ -195,6 +196,12 @@ local function showOffsetBox(k)
 		local bottomText = offsetBox:CreateFontString("$parentBottomText", "ARTWORK", "GameFontHighlight")
 		offsetBox.bottomText = bottomText
 		bottomText:SetPoint("TOP", offsetBox, "BOTTOM", 0, -5)
+
+		if _G.ElvUI and offsetBox.SetTemplate then
+			bg:Hide()
+			offsetBox:SetTemplate("Transparent")
+			offsetBox:SetBackdropBorderColor(1, 0.82, 0, 0.9)
+		end
 
 		offsetBox:SetScript("OnDragStart", function(this)
 				midPoint:StartMoving()

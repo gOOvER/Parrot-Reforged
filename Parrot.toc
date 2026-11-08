@@ -1,0 +1,59 @@
+## Interface: 11508, 11509, 16001, 20505, 20506, 30405, 38002, 40402, 50503, 50504, 120001, 120007, 120100, 120105, 120107
+## Interface-Retail: 120001, 120007, 120100, 120105, 120107
+## Interface-Classic: 11508, 11509, 16001
+## Interface-BCC: 20505, 20506
+## Interface-Wrath: 30405, 38002
+## Interface-Cata: 40402
+## Interface-Mists: 50503, 50504
+## Title: Parrot Reforged |cff00aa001.0.0|r
+## Notes: Floating Combat Text of awesomeness. Caw. It'll eat your crackers.
+## Notes-esES: Texto de combate flotante increíble. ¡Graznido! Se comerá tus galletas.
+## Notes-esMX: Texto de combate flotante increíble. ¡Graznido! Se comerá tus galletas.
+## Notes-deDE: Scrollender Kampftext der Ungeheuerlichkeit. Kraaaah!
+## Notes-frFR: Texte de combat flottant. Croac. Coco veut un gâteau.
+## Notes-itIT: Testo di combattimento fluttuante magnifico. Cra! Mangerà i tuoi cracker.
+## Notes-koKR: 환상적인 전투 텍스트. 꺅! 크래커를 먹어치울 거야.
+## Notes-ptBR: Texto de combate flutuante incrível. Caw! Vai comer seus biscoitos.
+## Notes-ruRU: Мощный плавающий текст боя.
+## Notes-zhCN: 绝妙的浮动战斗文本。来人，喂公子吃饼。真香。
+## Notes-zhTW: 絕妙的戰鬥記錄指示器。w
+## Author: ckknight, profalbert, nebula, gOOvER
+## Version: 1.0.0
+## X-Date: 2026-11-08
+## Category: Combat
+## X-Credits: ckknight, profalbert, nebula
+## X-Category: Combat
+## X-License: LGPLv3.0
+## X-Website: https://github.com/gOOvER/Parrot-Reforged
+## X-Curse-Project-ID: 101768
+## X-WoWI-ID: 24143
+## IconTexture: Interface\Icons\Spell_Nature_ForceOfNature
+## AddonCompartmentFunc: Parrot_OnAddonCompartmentClick
+## AddonCompartmentFuncOnEnter: Parrot_OnAddonCompartmentEnter
+## AddonCompartmentFuncOnLeave: Parrot_OnAddonCompartmentLeave
+## SavedVariables: ParrotDB
+## OptionalDeps: Ace3, AceGUI-3.0-SharedMediaWidgets, LibDataBroker-1.1, LibDBIcon-1.0, LibSharedMedia-3.0, LibDDI-1.0, LibSink-2.0, LibDualSpec-1.0, ElvUI, AddOnSkins
+
+embeds.xml
+locales.xml
+
+Code\Polyfills.lua
+Code\Parrot.lua
+Code\AnimationStyles.lua
+Code\CombatEvents.lua
+Code\CombatFeedFallback.lua
+Code\Display.lua
+Code\ScrollAreas.lua
+Code\Suppressions.lua
+Code\TriggerConditions.lua
+Code\Triggers.lua
+
+Data\AnimationStyles.lua
+Data\CombatEvents.lua
+Data\TriggerConditions.lua
+Data\Auras.lua
+Data\Cooldowns.lua
+Data\Loot.lua
+Data\PointGains.lua
+Data\CombatStatus.lua
+

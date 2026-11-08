@@ -298,7 +298,17 @@ function module:ShowMessage(text, area, sticky, r, g, b, font, fontSize, outline
 		fontString_num = fontString_num + 1
 		fs = frame:CreateFontString("ParrotFrameFontString" .. fontString_num, "ARTWORK", "SystemFont_Shadow_Small")
 	end
-	fs:SetFont(LibSharedMedia:Fetch("font", font), fontSize, outline)
+	local fontPath = LibSharedMedia:Fetch("font", font, true)
+	if not fontPath and _G.ElvUI then
+		local E = _G.ElvUI[1]
+		if E and E.db and E.db.general and E.db.general.font then
+			fontPath = LibSharedMedia:Fetch("font", E.db.general.font, true)
+		end
+		if not fontPath and E and E.media and E.media.normFont then
+			fontPath = E.media.normFont
+		end
+	end
+	fs:SetFont(fontPath or LibSharedMedia:Fetch("font", font) or _G.STANDARD_TEXT_FONT, fontSize, outline)
 	if shadow then
 		fs:SetShadowColor(0, 0, 0, 1)
 	else
@@ -320,7 +330,13 @@ function module:ShowMessage(text, area, sticky, r, g, b, font, fontSize, outline
 				texture = frame:CreateTexture("ParrotFrameTexture" .. texture_num, "OVERLAY")
 			end
 			texture:SetTexture(icon)
-			texture:SetTexCoord(0.07, 0.93, 0.07, 0.93) -- zoom the icon
+			if _G.ElvUI then
+				local E = _G.ElvUI[1]
+				local texCoords = (E and E.TexCoords) or { 0.08, 0.92, 0.08, 0.92 }
+				texture:SetTexCoord(unpack(texCoords))
+			else
+				texture:SetTexCoord(0.07, 0.93, 0.07, 0.93) -- zoom the icon
+			end
 			texture:SetWidth(fontSize)
 			texture:SetHeight(fontSize)
 			frame.icon = texture
@@ -406,8 +422,22 @@ function module:ShowMessage(text, area, sticky, r, g, b, font, fontSize, outline
 end
 Parrot.ShowMessage = module.ShowMessage
 
+local function getSafeFrameSize(fs, icon, fontSize)
+	local fallbackH = fontSize or 18
+	local w = ns.Compat.SafeNumber(fs:GetWidth()) or (fallbackH * 6)
+	local h = ns.Compat.SafeNumber(fs:GetHeight()) or fallbackH
+	local iconW = icon and (ns.Compat.SafeNumber(icon:GetWidth()) or fallbackH) or 0
+	local iconH = icon and (ns.Compat.SafeNumber(icon:GetHeight()) or fallbackH) or 0
+	return w + (icon and (iconW + 3) or 0), math.max(h, iconH)
+end
+
 local function isOverlapping(alpha, bravo)
-	if alpha:GetLeft() <= bravo:GetRight() and bravo:GetLeft() <= alpha:GetRight() and alpha:GetBottom() <= bravo:GetTop() and bravo:GetBottom() <= alpha:GetTop() then
+	local aL, aR, aB, aT = ns.Compat.SafeNumber(alpha:GetLeft()), ns.Compat.SafeNumber(alpha:GetRight()), ns.Compat.SafeNumber(alpha:GetBottom()), ns.Compat.SafeNumber(alpha:GetTop())
+	local bL, bR, bB, bT = ns.Compat.SafeNumber(bravo:GetLeft()), ns.Compat.SafeNumber(bravo:GetRight()), ns.Compat.SafeNumber(bravo:GetBottom()), ns.Compat.SafeNumber(bravo:GetTop())
+	if not (aL and aR and aB and aT and bL and bR and bB and bT) then
+		return false
+	end
+	if aL <= bR and bL <= aR and aB <= bT and bB <= aT then
 		return true
 	end
 end
@@ -417,7 +447,7 @@ function Display_Update()
 	for scrollArea, u in next, wildFrames do
 		for animationStyle, t in next, u do
 			local t_len = #t
-			local lastFrame = newList()
+			local lastFrame = animationStyle.overlap and newList()
 			for i, frame in ipairs(t) do
 				local start, length = frame.start, t.length
 				if start + length <= now then
@@ -457,10 +487,11 @@ function Display_Update()
 
 				frame:ClearAllPoints()
 				animationStyle.func(frame, scrollArea.xOffset, scrollArea.yOffset, scrollArea.size, percent, scrollArea[frame.sticky and "stickyDirection" or "direction"] or animationStyle.defaultDirection, i, t_len, frame.id)
-				frame:SetWidth(frame.fs:GetWidth() + (frame.icon and (frame.icon:GetWidth() + 3) or 0))
-				frame:SetHeight(math.max(frame.fs:GetHeight(), frame.icon and frame.icon:GetHeight() or 0))
+				local fw, fh = getSafeFrameSize(frame.fs, frame.icon, frame.fontSize)
+				frame:SetWidth(fw)
+				frame:SetHeight(fh)
 
-				if animationStyle.overlap then
+				if lastFrame then
 					for h = #lastFrame, 1, -1 do
 						if isOverlapping(lastFrame[h], frame) then
 							local minimum = percent
@@ -468,8 +499,9 @@ function Display_Update()
 							local current = (percent + maximum) / 2
 							while maximum - minimum > 0.01 do
 								animationStyle.func(frame, scrollArea.xOffset, scrollArea.yOffset, scrollArea.size, current, scrollArea[frame.sticky and "stickyDirection" or "direction"] or animationStyle.defaultDirection, i, t_len, frame.id)
-								frame:SetWidth(frame.fs:GetWidth() + (frame.icon and (frame.icon:GetWidth() + 3) or 0))
-								frame:SetHeight(math.max(frame.fs:GetHeight(), frame.icon and frame.icon:GetHeight() or 0))
+								fw, fh = getSafeFrameSize(frame.fs, frame.icon, frame.fontSize)
+								frame:SetWidth(fw)
+								frame:SetHeight(fh)
 								if isOverlapping(lastFrame[h], frame) then
 									minimum = current
 								else
@@ -480,8 +512,9 @@ function Display_Update()
 							current = current + 0.01
 							frame.start = -current * length + now
 							animationStyle.func(frame, scrollArea.xOffset, scrollArea.yOffset, scrollArea.size, current, scrollArea[frame.sticky and "stickyDirection" or "direction"] or animationStyle.defaultDirection, i, t_len, frame.id)
-							frame:SetWidth(frame.fs:GetWidth() + (frame.icon and (frame.icon:GetWidth() + 3) or 0))
-							frame:SetHeight(math.max(frame.fs:GetHeight(), frame.icon and frame.icon:GetHeight() or 0))
+							fw, fh = getSafeFrameSize(frame.fs, frame.icon, frame.fontSize)
+							frame:SetWidth(fw)
+							frame:SetHeight(fh)
 							for j = i+1, t_len do
 								local v = t[j]
 								if v.start > frame.start then
@@ -490,10 +523,12 @@ function Display_Update()
 							end
 						end
 					end
+					lastFrame[#lastFrame+1] = frame
 				end
-				lastFrame[#lastFrame+1] = frame
 			end
-			lastFrame = del(lastFrame)
+			if lastFrame then
+				lastFrame = del(lastFrame)
+			end
 			if not t[1] then
 				u[animationStyle] = del(t)
 			end
@@ -510,7 +545,10 @@ ParrotFrame:SetScript("OnUpdate", Display_Update)
 
 local flasher = nil
 local function makeflasher()
-	flasher = CreateFrame("Frame", "ParrotFlash", UIParent)
+	flasher = CreateFrame("Frame", "ParrotFlash", UIParent, BackdropTemplateMixin and "BackdropTemplate" or nil)
+	if BackdropTemplateMixin and not flasher.SetBackdrop then
+		Mixin(flasher, BackdropTemplateMixin)
+	end
 	flasher:SetFrameStrata("BACKGROUND")
 	flasher:SetBackdrop({bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",})
 	flasher:SetAllPoints( UIParent)
@@ -534,7 +572,7 @@ end
 
 function module:Flash(r, g, b)
 	if not flasher then makeflasher() end
-	flasher:SetBackdropColor(r, g, b, 255)
+	flasher:SetBackdropColor(r, g, b, 1)
 	flasher:Show()
 end
 Parrot.Flash = module.Flash

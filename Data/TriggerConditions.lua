@@ -5,13 +5,23 @@ local L = LibStub("AceLocale-3.0"):GetLocale("Parrot")
 
 local newList = Parrot.newList
 
-local GetSpellName = C_Spell.GetSpellName
+local GetSpellName = ns.Compat.GetSpellName
+local SafeNumber = ns.Compat.SafeNumber
+local SafeUnitName = ns.Compat.SafeUnitName
+local SafeUnitGUID = ns.Compat.SafeUnitGUID
+local IsSecretValue = ns.Compat.IsSecretValue
+
+local function safeUnitIsFriend(unit1, unit2)
+	local ok, val = pcall(UnitIsFriend, unit1, unit2)
+	if not ok or IsSecretValue(val) then return nil end
+	return val and 1 or 0
+end
 
 local playerGUID = UnitGUID("player")
 
 function module:OnEnable()
 	self:RegisterEvent("PLAYER_TARGET_CHANGED")
-	self:RegisterEvent("PLAYER_FOCUS_CHANGED")
+	pcall(self.RegisterEvent, self, "PLAYER_FOCUS_CHANGED")
 	self:RegisterEvent("UNIT_PET")
 end
 
@@ -50,6 +60,11 @@ local function ret(arg)
 end
 
 local function compare(val1, comparator, val2)
+	val1 = SafeNumber(val1)
+	val2 = SafeNumber(val2)
+	if not val1 or not val2 or not comparatorFunc[comparator] then
+		return false
+	end
 	return comparatorFunc[comparator](val1, val2)
 end
 
@@ -134,17 +149,22 @@ Parrot:RegisterPrimaryTriggerCondition {
 		end
 		-- check the friendly-flag
 		if ref.friendly >= 0 then
-			local friendly = UnitIsFriend("player", info) and 1 or 0
-			if ref.friendly ~= friendly then
+			local friendly = safeUnitIsFriend("player", info)
+			if friendly == nil or ref.friendly ~= friendly then
 				return false
 			end
 		end
 		-- everything fits, check the amount
+		local curHealth = SafeNumber(UnitHealth(info))
+		local maxHealth = SafeNumber(UnitHealthMax(info))
+		if not curHealth or not maxHealth or maxHealth <= 0 then
+			return false
+		end
 		local amount = ref.amount
 		if amount <= 1 then
-			amount = UnitHealthMax(info) * ref.amount
+			amount = maxHealth * ref.amount
 		end
-		local good = compare(UnitHealth(info), ref.comparator, amount)
+		local good = compare(curHealth, ref.comparator, amount)
 		-- check if the state has changed
 		if good ~= unitHealthStates[ref.unit][ref] then
 			unitHealthStates[ref.unit][ref] = good
@@ -210,19 +230,24 @@ local function checkPower(ref)
 	local unit = ref.unit
 	-- check the friendly-flag
 	if ref.friendly >= 0 then
-		local friendly = UnitIsFriend("player", unit) and 1 or 0
-		if ref.friendly ~= friendly then
+		local friendly = safeUnitIsFriend("player", unit)
+		if friendly == nil or ref.friendly ~= friendly then
 			return false
 		end
 	end
 	-- everything fits, check the amount
-	local amount, percent = (ref.amount):match("(%d+)(%%)")
+	local actualAmount = SafeNumber(UnitPower(unit, powerType))
+	local maxAmount = SafeNumber(UnitPowerMax(unit, powerType))
+	if not actualAmount or not maxAmount then
+		return false
+	end
+	local amount, percent = tostring(ref.amount):match("(%d+)(%%)")
 	if percent then
-		amount = UnitPowerMax(unit, powerType) * amount / 100
+		if maxAmount <= 0 then return false end
+		amount = maxAmount * tonumber(amount) / 100
 	else
 		amount = tonumber(ref.amount)
 	end
-	local actualAmount = UnitPower(unit, powerType)
 	return compare(actualAmount, ref.comparator, amount)
 end
 
@@ -455,6 +480,15 @@ Parrot:RegisterPrimaryTriggerCondition {
 	localName = L["Outgoing cast"],
 	combatLogEvents = {
 		{
+			eventType = "SPELL_CAST_SUCCESS",
+			triggerData = function(srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags, spellId, spellName)
+				if srcGUID ~= playerGUID then
+					return nil
+				end
+				return spellName
+			end,
+		},
+		{
 			eventType = "SPELL_DAMAGE",
 			triggerData = function(srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags, spellId, spellName, spellSchool, amount, school, resisted, blocked, absorbed, critical, glancing, crushing)
 				if srcGUID ~= playerGUID then
@@ -483,6 +517,15 @@ Parrot:RegisterPrimaryTriggerCondition {
 	name = "Incoming cast",
 	localName = L["Incoming cast"],
 	combatLogEvents = {
+		{
+			eventType = "SPELL_CAST_SUCCESS",
+			triggerData = function(srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags, spellId, spellName)
+				if dstGUID ~= playerGUID then
+					return nil
+				end
+				return spellName
+			end,
+		},
 		{
 			eventType = "SPELL_DAMAGE",
 			triggerData = function(srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags, spellId, spellName, spellSchool, amount, school, resisted, blocked, absorbed, critical, glancing, crushing)
@@ -544,7 +587,7 @@ Parrot:RegisterPrimaryTriggerCondition {
 		},
 	},
 	check = function(ref, info)
-		if not ref.unit or info.srcName ~= UnitName(ref.unit) then
+		if not ref.unit or info.srcName ~= SafeUnitName(ref.unit) then
 			return false
 		end
 		local spellid = tonumber(ref.spell)
@@ -642,7 +685,7 @@ Parrot:RegisterPrimaryTriggerCondition {
 		if not ref.unit or not ref.amount or not ref.comparator then
 			return false
 		end
-		if ref.unit == info.srcName or info.srcName == UnitName(ref.unit) then
+		if ref.unit == info.srcName or info.srcName == SafeUnitName(ref.unit) then
 			return compare(info.amount, ref.comparator, ref.amount)
 		end
 		return false
@@ -655,29 +698,29 @@ Parrot:RegisterPrimaryTriggerCondition {
 	combatLogEvents = {
 		{
 			eventType = "SWING_DAMAGE",
-			check = function(_, _, _, dstGUID)
-				return dstGUID == playerGUID
+			check = function(srcGUID)
+				return srcGUID == playerGUID
 			end,
 			triggerData = parseSwingDamage,
 		},
 		{
 			eventType = "SPELL_PERIODIC_DAMAGE",
-			check = function(_, _, _, dstGUID)
-				return dstGUID == playerGUID
+			check = function(srcGUID)
+				return srcGUID == playerGUID
 			end,
 			triggerData = parseSpellDamage,
 		},
 		{
 			eventType = "SPELL_DAMAGE",
-			check = function(_, _, _, dstGUID)
-				return dstGUID == playerGUID
+			check = function(srcGUID)
+				return srcGUID == playerGUID
 			end,
 			triggerData = parseSpellDamage,
 		},
 		{
 			eventType = "RANGE_DAMAGE",
-			check = function(_, _, _, dstGUID)
-				return dstGUID == playerGUID
+			check = function(srcGUID)
+				return srcGUID == playerGUID
 			end,
 			triggerData = parseSpellDamage,
 		},
@@ -715,7 +758,7 @@ Parrot:RegisterPrimaryTriggerCondition {
 		if not ref.unit or not ref.amount or not ref.comparator then
 			return false
 		end
-		if ref.unit == info.dstName or info.dstName == UnitName(ref.unit) then
+		if ref.unit == info.dstName or info.dstName == SafeUnitName(ref.unit) then
 			return compare(info.amount, ref.comparator, ref.amount)
 		end
 		return false
@@ -818,16 +861,21 @@ Parrot:RegisterSecondaryTriggerCondition {
 			return false
 		end
 		if ref.friendly >= 0 then
-			local friendly = UnitIsFriend("player", ref.unit) and 1 or 0
-			if ref.friendly ~= friendly then
+			local friendly = safeUnitIsFriend("player", ref.unit)
+			if friendly == nil or ref.friendly ~= friendly then
 				return false
 			end
 		end
+		local curHealth = SafeNumber(UnitHealth(ref.unit))
+		local maxHealth = SafeNumber(UnitHealthMax(ref.unit))
+		if not curHealth or not maxHealth or maxHealth <= 0 then
+			return false
+		end
 		local amount = ref.amount
 		if amount <= 1 then
-			amount = UnitHealthMax(ref.unit) * ref.amount
+			amount = maxHealth * ref.amount
 		end
-		return compare(UnitHealth(ref.unit), ref.comparator, amount)
+		return compare(curHealth, ref.comparator, amount)
 	end,
 }
 
@@ -838,11 +886,10 @@ Parrot:RegisterSecondaryTriggerCondition {
 	param = {
 		type = 'select',
 		values = {
-			["Bear Form"] = GetSpellName(5487),
-			["Cat Form"] = GetSpellName(768),
-			["Travel Form"] = GetSpellName(783),
-			["Moonkin Form"] = GetSpellName(24858),
-			--["Tree of Life"] = GetSpellName(48371),
+			["Bear Form"] = GetSpellName(5487) or "Bear Form",
+			["Cat Form"] = GetSpellName(768) or "Cat Form",
+			["Travel Form"] = GetSpellName(783) or "Travel Form",
+			["Moonkin Form"] = GetSpellName(24858) or "Moonkin Form",
 		}
 	},
 	check = function(param)
@@ -850,7 +897,7 @@ Parrot:RegisterSecondaryTriggerCondition {
 			return true
 		end
 
-		local form = GetShapeshiftForm(true)
+		local form = GetShapeshiftForm and GetShapeshiftForm() or 0
 		if form == 1 then
 			return param == "Bear Form"
 		elseif form == 2 then
@@ -859,8 +906,35 @@ Parrot:RegisterSecondaryTriggerCondition {
 			return param == "Travel Form"
 		elseif form == 4 then
 			return param == "Moonkin Form"
-		--elseif form == 5 then
-		--	return param == "Tree of Life"
+		end
+		return false
+	end,
+}
+
+Parrot:RegisterSecondaryTriggerCondition {
+	name = "Warrior Stance",
+	localName = L["Warrior Stance"] or "Warrior Stance",
+	notLocalName = L["Not in Warrior Stance"] or "Not in Warrior Stance",
+	param = {
+		type = 'select',
+		values = {
+			["Battle Stance"] = GetSpellName(2457) or "Battle Stance",
+			["Defensive Stance"] = GetSpellName(71) or "Defensive Stance",
+			["Berserker Stance"] = GetSpellName(2458) or "Berserker Stance",
+		}
+	},
+	check = function(param)
+		if select(2, UnitClass("player")) ~= "WARRIOR" then
+			return true
+		end
+
+		local form = GetShapeshiftForm and GetShapeshiftForm() or 0
+		if form == 1 then
+			return param == "Battle Stance"
+		elseif form == 2 then
+			return param == "Defensive Stance"
+		elseif form == 3 then
+			return param == "Berserker Stance"
 		end
 		return false
 	end,
@@ -870,7 +944,7 @@ Parrot:RegisterSecondaryTriggerCondition {
 	name = "Grouped",
 	localName = L["In a group"],
 	check = function()
-		return IsInGroup()
+		return IsInGroup and IsInGroup() or false
 	end,
 	exclusive = true,
 }
@@ -880,7 +954,7 @@ Parrot:RegisterSecondaryTriggerCondition {
 	localName = L["Mounted"],
 	notLocalName = L["Not mounted"],
 	check = function()
-		return IsMounted()
+		return IsMounted and IsMounted() or false
 	end,
 	exclusive = true,
 }
@@ -890,7 +964,7 @@ Parrot:RegisterSecondaryTriggerCondition {
 	localName = L["In vehicle"],
 	notLocalName = L["Not in vehicle"],
 	check = function()
-		return UnitInVehicle("player")
+		return UnitInVehicle and UnitInVehicle("player") or false
 	end,
 	exclusive = true
 }
@@ -933,12 +1007,13 @@ Parrot:RegisterPrimaryTriggerCondition {
 		},
 	},
 	check = function(ref, info)
-		if not ref.unit or not ref.friendly or not ref.spell or UnitGUID(ref.unit) ~= info.srcGUID then
+		local unitGUID = ref.unit and SafeUnitGUID(ref.unit)
+		if not ref.unit or not ref.friendly or not ref.spell or not unitGUID or unitGUID ~= info.srcGUID then
 			return false
 		end
 		if ref.friendly >= 0 then
-			local friendly = UnitIsFriend("player", ref.unit) and 1 or 0
-			if ref.friendly ~= friendly then
+			local friendly = safeUnitIsFriend("player", ref.unit)
+			if friendly == nil or ref.friendly ~= friendly then
 				return false
 			end
 		end
@@ -984,7 +1059,7 @@ Parrot:RegisterSecondaryTriggerCondition {
 				return false
 			end
 			local lua_string = 'return function() '..param..' end'
-			local create_func, err = loadstring(lua_string)
+			local create_func, err = ns.Compat.LoadChunk(lua_string, "ParrotLuaTrigger")
 			if create_func then
 				func = create_func()
 				-- and put it in the cache

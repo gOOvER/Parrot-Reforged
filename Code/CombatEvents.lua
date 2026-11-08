@@ -30,6 +30,8 @@ local defaults = {
 		throttles = {},
 		sthrottles = {},
 		useShortThrottleText = true,
+		hideThrottleText = false,
+		onlyShowCrits = false,
 		abbreviateStyle = "abbreviate",
 		abbreviateLength = 30,
 		stickyCrit = true,
@@ -242,7 +244,7 @@ end
 -- + Abbriviate: "SB"
 --]]
 function module:GetAbbreviatedSpell(name)
-	if not name then return end
+	if not name or ns.Compat.IsSecretValue(name) then return name end
 	local style = db.abbreviateStyle
 	if style == "none" then
 		return name
@@ -470,7 +472,7 @@ function module:OnOptionsCreate()
 					breakUpAmount = {
 						type = 'toggle',
 						name = L["Break up amounts"],
-						desc = L["Break up number values with '%s' (26500 -> %s)"]:format(LARGE_NUMBER_SEPERATOR, BreakUpLargeNumbers(26500)),
+						desc = L["Break up number values with '%s' (26500 -> %s)"]:format(LARGE_NUMBER_SEPERATOR or ",", BreakUpLargeNumbers and BreakUpLargeNumbers(26500) or "26,500"),
 						disabled = function() return db.shortenAmount end,
 						order = 8,
 					}
@@ -547,6 +549,11 @@ function module:OnOptionsCreate()
 				name = L["Sticky crits"],
 				desc = L["Enable to show crits in the sticky style."],
 			},
+			onlyShowCrits = {
+				type = 'toggle',
+				name = L["Only show crits"] or "Only show crits",
+				desc = L["Only show critical strikes and critical heals"] or "Only show critical strikes and critical heals",
+			},
 			throttle = {
 				type = 'group',
 				name = L["Throttle events"],
@@ -557,7 +564,13 @@ function module:OnOptionsCreate()
 						name = L["Short texts"],
 						desc = L["Use short throttle-texts (like \"2++\" instead of \"2 crits\")"],
 						order = 1,
-					}
+					},
+					hideThrottleText = {
+						type = 'toggle',
+						name = L["Hide throttle text"] or "Hide throttle text",
+						desc = L["Hide the throttle hit/heal count suffix"] or "Hide the throttle hit/heal count suffix",
+						order = 2,
+					},
 				},
 				hidden = function()
 					return not next(events_opt.args.throttle.args)
@@ -1675,19 +1688,69 @@ Parrot.RegisterFilterType = module.RegisterFilterType
 
 local handler__translation
 local handler__info
-local function handler(literal)
+local replaceTags
+
+local function evalTag(literal, skipSecrets)
 	local inner = literal:sub(2, -2)
-	local value = handler__translation[inner]
+	local value = handler__translation and handler__translation[inner]
 	if value then
+		local res
 		if type(value) == "function" then
-			return tostring(value(handler__info) or UNKNOWN)
+			res = value(handler__info)
 		else
-			return tostring(handler__info[value] or UNKNOWN)
+			res = handler__info[value]
 		end
+		if type(res) == "nil" then
+			return UNKNOWN, false
+		end
+		local str = tostring(res)
+		local isSecret = ns.Compat.IsSecretValue(res) or ns.Compat.IsSecretValue(str)
+		if skipSecrets and isSecret then
+			return literal, true
+		end
+		return str, isSecret
 	else
-		value = inner:gsub("(%b[])", handler)
-		return ("[%s]"):format(value)
+		local replaced, isSecret = replaceTags(inner, skipSecrets)
+		return "[" .. replaced .. "]", isSecret
 	end
+end
+
+replaceTags = function(str, skipSecrets)
+	if not str or ns.Compat.IsSecretValue(str) then
+		return str, true
+	end
+	local pos = 1
+	local len = #str
+	local out = nil
+	local anySecret = false
+	while pos <= len do
+		local s, e, match = str:find("(%b[])", pos)
+		if not s then
+			if out ~= nil then
+				out = out .. str:sub(pos)
+			end
+			break
+		end
+		local rep, isSecret = evalTag(match, skipSecrets)
+		if isSecret then
+			anySecret = true
+		end
+		if out == nil then
+			out = str:sub(1, s - 1) .. rep
+		else
+			out = out .. str:sub(pos, s - 1) .. rep
+		end
+		pos = e + 1
+	end
+	if out == nil then
+		return str, false
+	end
+	return out, anySecret
+end
+
+local function handler(literal)
+	local rep = evalTag(literal, false)
+	return rep
 end
 
 local function round(num, idp)
@@ -1710,9 +1773,12 @@ local function shortenAmount(val)
 end
 
 function module:ShortenAmount(val)
+	if not val or ns.Compat.IsSecretValue(val) or type(val) ~= "number" then
+		return val
+	end
 	if db.shortenAmount then
 		return shortenAmount(val)
-	elseif db.breakUpAmount then
+	elseif db.breakUpAmount and BreakUpLargeNumbers then
 		return BreakUpLargeNumbers(val)
 	end
 	return val
@@ -1835,7 +1901,9 @@ function module:RunThrottle(force)
 end
 
 local function get_sthrottle(info)
-	local sthrottle = sthrottles[info.spellID] or sthrottles[info.abilityName]
+	local spellID = not ns.Compat.IsSecretValue(info.spellID) and info.spellID or nil
+	local abilityName = not ns.Compat.IsSecretValue(info.abilityName) and info.abilityName or nil
+	local sthrottle = (spellID and sthrottles[spellID]) or (abilityName and sthrottles[abilityName])
 	return sthrottle
 end
 
@@ -1877,25 +1945,29 @@ Example:
 function module:TriggerCombatEvent(category, name, info, throttleDone)
 	if not module:IsEnabled() then return end -- TODO remove
 
+	if type(info) ~= "table" then
+		debug(("Bad argument #4 to `TriggerCombatEvent'. %q expected, got %q."):format("table", type(info)))
+		return
+	end
 	if cancelUIDSoon[info.uid] then
 		return
 	end
 	if type(category) ~= "string" then
-		error(("Bad argument #2 to `TriggerCombatEvent'. %q expected, got %q."):format("string", type(category)), 2)
+		debug(("Bad argument #2 to `TriggerCombatEvent'. %q expected, got %q."):format("string", type(category)))
 		return
 	end
 	local data = combatEvents[category]
 	if not data then
-		error(("Bad argument #2 to `TriggerCombatEvent'. %q is an unknown category."):format(category), 2)
+		debug(("Bad argument #2 to `TriggerCombatEvent'. %q is an unknown category."):format(category))
 		return
 	end
 	if type(name) ~= "string" then
-		error(("Bad argument #3 to `TriggerCombatEvent'. %q expected, got %q."):format("string", type(name)), 2)
+		debug(("Bad argument #3 to `TriggerCombatEvent'. %q expected, got %q."):format("string", type(name)))
 		return
 	end
 	data = data[name]
 	if not data then
-		error(("Bad argument #3 to `TriggerCombatEvent'. %q is an unknown name for category %q."):format(name, category), 2)
+		debug(("Bad argument #3 to `TriggerCombatEvent'. %q is an unknown name for category %q."):format(name, category))
 		return
 	end
 
@@ -1905,11 +1977,6 @@ function module:TriggerCombatEvent(category, name, info, throttleDone)
 		disabled = data.defaultDisabled
 	end
 	if disabled then
-		return
-	end
-
-	if type(info) ~= "table" then
-		error(("Bad argument #4 to `TriggerCombatEvent'. %q expected, got %q."):format("table", type(info)), 2)
 		return
 	end
 
@@ -1951,11 +2018,18 @@ function module:TriggerCombatEvent(category, name, info, throttleDone)
 			else
 				info_throttleKey = info[throttleKey]
 			end
+			if info_throttleKey == nil or ns.Compat.IsSecretValue(info_throttleKey) then
+				info_throttleKey = ""
+			end
 			local throttleCountData = throttle[3]
 			local throttleCountKey = throttleCountData[1]
 			for i = 2, #throttleCountData-1 do
 				local v = throttleCountData[i]
-				throttleCountKey = throttleCountKey .. "_" .. v .. "_" .. tostring(info[v])
+				local val = info[v]
+				if ns.Compat.IsSecretValue(val) then
+					val = "false"
+				end
+				throttleCountKey = throttleCountKey .. "_" .. v .. "_" .. tostring(val)
 			end
 			local t = throttleData[throttleType][category][name][info_throttleKey]
 			if next(info) == nil and getmetatable(info) then
@@ -1966,10 +2040,14 @@ function module:TriggerCombatEvent(category, name, info, throttleDone)
 					if k ~= LAST_TIME and k ~= NEXT_TIME then
 						if t[k] == nil then
 							t[k] = v
-						elseif throttle[k] and t[k] ~= v then
+						elseif throttle[k] and (ns.Compat.IsSecretValue(t[k]) or ns.Compat.IsSecretValue(v) or t[k] ~= v) then
 							t[k] = throttle[k]
 						elseif type(v) == "number" and k:match("[Aa]mount") then -- sum up amounts
-							t[k] = t[k] + v
+							if not ns.Compat.IsSecretValue(v) and not ns.Compat.IsSecretValue(t[k]) then
+								t[k] = t[k] + v
+							else
+								t[k] = v
+							end
 						end
 					end
 				end
@@ -2029,6 +2107,11 @@ Parrot.TriggerCombatEvent = module.TriggerCombatEvent
 local function runEvent(category, name, info)
 	local cdb = db[category][name]
 	local data = combatEvents[category][name]
+	local isCrit = not ns.Compat.IsSecretValue(info.isCrit) and info.isCrit or false
+
+	if db.onlyShowCrits and data.canCrit and not isCrit then
+		return
+	end
 
 	local filterType = data.filterType
 	if filterType then
@@ -2041,27 +2124,28 @@ local function runEvent(category, name, info)
 		else
 			info_filterKey = info[filterKey]
 		end
-		if info_filterKey < base then
+		if not ns.Compat.IsSecretValue(info_filterKey) and type(info_filterKey) == "number" and info_filterKey < base then
 			return
 		end
 	end
 
 	local throttle = data.throttle
 	local throttleSuffix
-	if throttle then
+	if throttle and not db.hideThrottleText then
 		local throttleType = throttle[1]
 		if (db.throttles[throttleType] or throttleDefaultTimes[throttleType]) > 0 then
 			local throttleCountData = throttle[3]
 			if throttleCountData then
 				local func = throttleCountData[#throttleCountData]
 				throttleSuffix = func(info)
+				isCrit = not ns.Compat.IsSecretValue(info.isCrit) and info.isCrit or false
 			end
 		end
 	end
 
 	local sticky = false
 	if data.canCrit then
-		sticky = info.isCrit and db.stickyCrit
+		sticky = isCrit and db.stickyCrit
 	end
 	if not sticky then
 		sticky = cdb.sticky
@@ -2074,13 +2158,14 @@ local function runEvent(category, name, info)
 	handler__translation = data.tagTranslations
 	handler__info = info
 	local icon
+	local hasSecretTag = false
 	if handler__translation then
 		if db.hideSkillNames then
 			text = text:gsub("%(%[Skill%]%)","")
 			text = text:gsub("%(%[Skill%] %- ","(")
 			text = text:gsub("%[Skill%]","")
 		end
-		text = text:gsub("(%b[])", handler)
+		text, hasSecretTag = replaceTags(text, true)
 		icon = handler__translation.Icon
 		if icon then
 			if type(icon) == "function" then
@@ -2091,93 +2176,96 @@ local function runEvent(category, name, info)
 		end
 	end
 
-	text = text:gsub("%(__NONAME__%)","")
-	text = text:gsub(" %- __NONAME__%)",")")
-	text = text:gsub("__NONAME__","")
+	if not ns.Compat.IsSecretValue(text) then
+		text = text:gsub("%(__NONAME__%)","")
+		text = text:gsub(" %- __NONAME__%)",")")
+		text = text:gsub("__NONAME__","")
+		text = text:gsub("%(%s*%)%s*", "")
+	end
 
-	local t = newList(text)
-	local overhealAmount = info.overhealAmount
-	local overkillAmount = info.overkill
+	if hasSecretTag and handler__translation then
+		text = replaceTags(text, false)
+	end
+
+	local SafeNumber = ns.Compat.SafeNumber
+	local overhealAmount = SafeNumber(info.overhealAmount)
+	local overkillAmount = SafeNumber(info.overkill)
 	local modifierDB = db.modifier
 	if overhealAmount and overhealAmount >= 1 then
 		if modifierDB.overheal.enabled then
 			handler__translation = modifierTranslations.overheal
-			t[#t+1] = modifierDB.overheal.tag:gsub("(%b[])", handler)
+			text = text .. replaceTags(modifierDB.overheal.tag, false)
 		end
-		text = tconcat(t)
 	elseif overkillAmount and overkillAmount >= 1 then
 		if modifierDB.overkill.enabled then
 			handler__translation = modifierTranslations.overkill
-			t[#t+1] = modifierDB.overkill.tag:gsub("(%b[])", handler)
+			text = text .. replaceTags(modifierDB.overkill.tag, false)
 		end
-		text = tconcat(t)
 	else
 		if modifierDB.absorb.enabled then
-			local absorbAmount = info.absorbAmount
+			local absorbAmount = SafeNumber(info.absorbAmount)
 			if absorbAmount and absorbAmount >= 1 then
 				handler__translation = modifierTranslations.absorb
-				t[#t+1] = modifierDB.absorb.tag:gsub("(%b[])", handler)
+				text = text .. replaceTags(modifierDB.absorb.tag, false)
 			end
 		end
 		if modifierDB.block.enabled then
-			local blockAmount = info.blockAmount
+			local blockAmount = SafeNumber(info.blockAmount)
 			if blockAmount and blockAmount >= 1 then
 				handler__translation = modifierTranslations.block
-				t[#t+1] = modifierDB.block.tag:gsub("(%b[])", handler)
+				text = text .. replaceTags(modifierDB.block.tag, false)
 			end
 		end
 		if modifierDB.resist.enabled then
-			local resistAmount = info.resistAmount
+			local resistAmount = SafeNumber(info.resistAmount)
 			if resistAmount and resistAmount >= 1 then
 				handler__translation = modifierTranslations.resist
-				t[#t+1] = modifierDB.resist.tag:gsub("(%b[])", handler)
+				text = text .. replaceTags(modifierDB.resist.tag, false)
 			end
 		end
 		if modifierDB.vulnerable.enabled then
-			local vulnerableAmount = info.vulnerableAmount
+			local vulnerableAmount = SafeNumber(info.vulnerableAmount)
 			if vulnerableAmount and vulnerableAmount >= 1 then
 				handler__translation = modifierTranslations.vulnerable
-				t[#t+1] = modifierDB.vulnerable.tag:gsub("(%b[])", handler)
+				text = text .. replaceTags(modifierDB.vulnerable.tag, false)
 			end
 		end
-		text = tconcat(t)
-		if info.isGlancing then
+		if not ns.Compat.IsSecretValue(info.isGlancing) and info.isGlancing then
 			if modifierDB.glancing.enabled then
 				handler__translation = modifierTranslations.glancing
 				handler__info = newList(text)
 				if modifierDB.color then
-					text = "|cff" .. modifierDB.glancing.color .. modifierDB.glancing.tag:gsub("(%b[])", handler)
+					text = "|cff" .. modifierDB.glancing.color .. replaceTags(modifierDB.glancing.tag, false)
 				else
-					text = modifierDB.glancing.tag:gsub("(%b[])", handler)
+					text = replaceTags(modifierDB.glancing.tag, false)
 				end
 				handler__info = del(handler__info)
 			end
-		elseif info.isCrushing then
+		elseif not ns.Compat.IsSecretValue(info.isCrushing) and info.isCrushing then
 			if modifierDB.crushing.enabled then
 				handler__translation = modifierTranslations.crushing
 				handler__info = newList(text)
 				if modifierDB.color then
-					text = "|cff" .. modifierDB.crushing.color .. modifierDB.crushing.tag:gsub("(%b[])", handler)
+					text = "|cff" .. modifierDB.crushing.color .. replaceTags(modifierDB.crushing.tag, false)
 				else
-					text = modifierDB.crushing.tag:gsub("(%b[])", handler)
+					text = replaceTags(modifierDB.crushing.tag, false)
 				end
 				handler__info = del(handler__info)
 			end
 		end
 	end
-	if info.isCrit then
+	if isCrit then
 		if modifierDB.crit.enabled then
 			handler__translation = modifierTranslations.crit
 			handler__info = newList(text)
 			if modifierDB.color then
-				text = "|cff" .. modifierDB.crit.color .. modifierDB.crit.tag:gsub("(%b[])", handler)
+				text = "|cff" .. modifierDB.crit.color .. replaceTags(modifierDB.crit.tag, false)
 			else
-				text = modifierDB.crit.tag:gsub("(%b[])", handler)
+				text = replaceTags(modifierDB.crit.tag, false)
 			end
 			handler__info = del(handler__info)
 		end
 	end
-	t = del(t)
 	handler__translation = nil
 	handler__info = nil
 	local r, g, b = hexColorToTuple(cdb.color or data.color)
@@ -2234,8 +2322,14 @@ function module:HandleBlizzardEvent(uid, eventName, ...)
 end
 
 local function sfiltered(info)
-	local filter = db.sfilters[tostring(info.spellID)] or db.sfilters[info.abilityName]
-	if filter and (not filter.amount or (filter.amount > (info.realAmount or info.amount or 0))) then
+	local spellID = not ns.Compat.IsSecretValue(info.spellID) and info.spellID or nil
+	local abilityName = not ns.Compat.IsSecretValue(info.abilityName) and info.abilityName or nil
+	local filter = (spellID and db.sfilters[tostring(spellID)]) or (abilityName and db.sfilters[abilityName])
+	local amt = info.realAmount or info.amount or 0
+	if ns.Compat.IsSecretValue(amt) then
+		amt = 0
+	end
+	if filter and (not filter.amount or (filter.amount > amt)) then
 		if (filter.inc and playerGUID == info.recipientID) or
 		(filter.out and playerGUID == info.sourceID) then
 			return true
@@ -2311,7 +2405,7 @@ local function makeParseFunction(event)
 	end
 
 	code = code .. "end"
-	local createFunc, err = loadstring(code)
+	local createFunc, err = ns.Compat.LoadChunk(code, "CombatLogParse_" .. event)
 
 	if createFunc then
 		return createFunc()
@@ -2336,34 +2430,40 @@ local function checkForRelevance(sourceFlags, destFlags)
 end
 
 function module:HandleCombatlogEvent(uid, timestamp, eventType, hideCaster, sourceGUID, sourceName, sourceFlags, sourceRaidFlags, destGUID, destName, destFlags, destRaidFlags, ...)
-	if not self:IsEnabled() then return end -- TODO remove
+	if not self:IsEnabled() then return end
 
-	if checkForRelevance(sourceFlags, destFlags) then
-		local registeredHandlers = combatLogEvents[eventType]
-		if registeredHandlers then
-			local info = newList()
-			info.hideCaster = hideCaster
-			info.sourceID = sourceGUID
-			info.sourceName = sourceName or ""
-			info.sourceFlags = sourceFlags
-			info.recipientID = destGUID
-			info.recipientName = destName or ""
-			info.destFlags = destFlags
-			local parseFunc = combatLogParseFuncs[eventType]
-			if not parseFunc then
-				debug("No parseFunc for " .. eventType)
-			else
+	local registeredHandlers = combatLogEvents[eventType]
+	if not registeredHandlers then return end
+	if not checkForRelevance(sourceFlags, destFlags) then return end
+
+	local parseFunc = combatLogParseFuncs[eventType]
+	if not parseFunc then
+		debug("No parseFunc for " .. eventType)
+		return
+	end
+
+	local info
+	for i = 1, #registeredHandlers do
+		local v = registeredHandlers[i]
+		if v.checkfunc(sourceGUID, sourceName, sourceFlags, destGUID, destName, destFlags, ...) then
+			if not info then
+				info = newList()
+				info.hideCaster = hideCaster
+				info.sourceID = sourceGUID
+				info.sourceName = sourceName or ""
+				info.sourceFlags = sourceFlags
+				info.recipientID = destGUID
+				info.recipientName = destName or ""
+				info.destFlags = destFlags
 				parseFunc(info, ...)
-				for i, v in ipairs(registeredHandlers) do
-					-- TODO use raid-flags introduced in 4.2 here... seems dirty otherwise
-					local check = v.checkfunc(sourceGUID, sourceName, sourceFlags, destGUID, destName, destFlags, ...)
-					if check and not sfiltered(info) then
-						info.uid = uid
-						self:TriggerCombatEvent(v.category, v.name, info)
-					end
-				end
 			end
-			info = del(info)
+			if not sfiltered(info) then
+				info.uid = uid
+				self:TriggerCombatEvent(v.category, v.name, info)
+			end
 		end
+	end
+	if info then
+		info = del(info)
 	end
 end

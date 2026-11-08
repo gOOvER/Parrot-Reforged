@@ -1,4 +1,4 @@
-local L = LibStub("AceLocale-3.0"):NewLocale("Parrot", "zhTW")
+﻿local L = LibStub("AceLocale-3.0"):NewLocale("Parrot", "zhTW")
 if not L then return end
 
 L[" (%d crits)"] = "（%d次爆擊）"
@@ -216,7 +216,6 @@ L["Item buff gains"] = "獲取物品增益"
 L["Item cooldown ready"] = "物品冷卻結束"
 L["Killing Blow!"] = "殺死！"
 L["Killing blows"] = "殺死"
--- L["Layering of the scrolling text relative to other frames."] = "Layering of the scrolling text relative to other frames."
 L["Leave combat"] = "離開戰鬥"
 L["Left"] = "左"
 L["Left, clockwise"] = "向左，順時針"

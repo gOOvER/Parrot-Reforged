@@ -742,16 +742,12 @@ do
 	ScriptEnv.L = L
 
 	local safeGetSpellName = function(id, ...)
-		if not C_Spell.DoesSpellExist(id) then
-			return "_Unknown SpellId " .. id
-		end
-		return C_Spell.GetSpellName(id)
+		return ns.Compat.GetSpellName(id) or ("_Unknown SpellId " .. tostring(id))
 	end
 
 	local function hasMissingSpellIds(code)
 		for spellId in code:gmatch("GetSpellName%((%d+)%)") do
-			if not C_Spell.DoesSpellExist(spellId) then
-				print("Parrot: Trigger spell missing:", spellId)
+			if not ns.Compat.DoesSpellExist(tonumber(spellId)) then
 				return true
 			end
 		end
@@ -759,14 +755,18 @@ do
 	end
 
 	local function makeDefaultTrigger(index, code)
-		if hasMissingSpellIds(code) then
+		local missing = hasMissingSpellIds(code)
+		if missing then
 			ScriptEnv.GetSpellName = safeGetSpellName
 		else
-			ScriptEnv.GetSpellName = C_Spell.GetSpellName
+			ScriptEnv.GetSpellName = ns.Compat.GetSpellName
 		end
-		local func = assert(loadstring(("return %s"):format(code)))
-		setfenv(func, ScriptEnv)
-		defaults.profile.triggers2[index] = func()
+		local func = assert(ns.Compat.LoadChunk(("return %s"):format(code), "@defaultTrigger_" .. index, ScriptEnv))
+		local trig = func()
+		if missing and trig then
+			trig.disabled = true
+		end
+		defaults.profile.triggers2[index] = trig
 	end
 
 	for k,v in pairs(defaultTriggers) do
@@ -775,9 +775,7 @@ do
 end
 
 local function getPlayerSpec()
-	local spec = GetSpecialization()
-	local specId = spec and GetSpecializationInfo(spec) or 0
-	return tostring(specId)
+	return ns.Compat.GetCurrentSpecID(playerClass, specChoices)
 end
 
 local function hexColorToTuple(color)
@@ -805,6 +803,9 @@ local function rebuildEffectiveRegistry()
 	periodicCheckTimer = nil
 
 	wipe(effectiveRegistry)
+	if type(db.triggers2) ~= "table" then
+		db.triggers2 = {}
+	end
 
 	for _, v in next, db.triggers2 do
 		if checkTriggerEnabled(v) then
@@ -947,7 +948,9 @@ function module:OnEnable()
 		registerTriggers = nil
 	end
 
-	self:RegisterEvent("PLAYER_TALENT_UPDATE", rebuildEffectiveRegistry)
+	for _, ev in ipairs({ "PLAYER_TALENT_UPDATE", "CHARACTER_POINTS_CHANGED", "ACTIVE_TALENT_GROUP_CHANGED", "PLAYER_SPECIALIZATION_CHANGED" }) do
+		pcall(self.RegisterEvent, self, ev, rebuildEffectiveRegistry)
+	end
 	rebuildEffectiveRegistry()
 end
 
@@ -958,11 +961,11 @@ local function getIconPath(icon)
 
 	local path = iconCache[icon]
 	if not path then
-		local texture = C_Spell.GetSpellTexture(icon)
+		local texture = ns.Compat.GetSpellTexture(icon)
 		if texture then
 			path = texture
 		else
-			texture = GetItemIcon(icon)
+			texture = ns.Compat.GetItemIconByID(icon)
 			if texture then
 				path = texture
 			else
@@ -1923,35 +1926,37 @@ function module:OnOptionsCreate()
 	}
 	local j = 0
 	for class, localized in pairs(classChoices) do
-		j = j + 1
-		tsharedopt.classes.args[class] = {
-			type = 'toggle',
-			name = localized,
-			desc = localized,
-			get = getClass,
-			set = setClass,
-			order = j * 10,
-		}
-		tsharedopt.classes.args[class .. "-"] = {
-			type = 'group',
-			inline = true,
-			width = 'half',
-			name = localized,
-			desc = localized,
-			hidden = notIsClass,
-			order = j * 10 + 1,
-			args = {}
-		}
-		for i,v in ipairs(specChoices[class]) do
-			local _, name, desc = GetSpecializationInfoByID(v)
-			tsharedopt.classes.args[class .. "-"].args["Spec" .. v] = {
+		if localized and specChoices[class] then
+			j = j + 1
+			tsharedopt.classes.args[class] = {
 				type = 'toggle',
-				name = name,
-				desc = desc,
-				get = getSpec,
-				set = setSpec,
-				hidden = false,
+				name = localized,
+				desc = localized,
+				get = getClass,
+				set = setClass,
+				order = j * 10,
 			}
+			tsharedopt.classes.args[class .. "-"] = {
+				type = 'group',
+				inline = true,
+				width = 'half',
+				name = localized,
+				desc = localized,
+				hidden = notIsClass,
+				order = j * 10 + 1,
+				args = {}
+			}
+			for i,v in ipairs(specChoices[class]) do
+				local name, desc = ns.Compat.GetSpecInfoByID(class, i, v)
+				tsharedopt.classes.args[class .. "-"].args["Spec" .. v] = {
+					type = 'toggle',
+					name = name,
+					desc = desc,
+					get = getSpec,
+					set = setSpec,
+					hidden = false,
+				}
+			end
 		end
 	end
 
@@ -2031,6 +2036,9 @@ function module:OnOptionsCreate()
 		end
 	end
 
+	if type(db.triggers2) ~= "table" then
+		db.triggers2 = {}
+	end
 	for i, t in pairs(db.triggers2) do
 		makeOption(i, t)
 	end

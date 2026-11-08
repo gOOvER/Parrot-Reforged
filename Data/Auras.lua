@@ -4,7 +4,7 @@ local L = LibStub("AceLocale-3.0"):GetLocale("Parrot")
 
 local newDict = Parrot.newDict
 
-local GetSpellTexture = C_Spell.GetSpellTexture
+local GetSpellTexture = ns.Compat.GetSpellTexture
 
 local playerGUID = UnitGUID("player")
 
@@ -29,29 +29,14 @@ end
 
 local function retrieveDestName(info)
 	if not info.recipientName then return end
-	if Parrot.db.profile.showNameRealm then
+	if Parrot.db.profile.showNameRealm or ns.Compat.IsSecretValue(info.recipientName) then
 		return info.recipientName
 	else
 		return info.recipientName:gsub("-.*", "")
 	end
 end
 
-local FindAura do
-	local function checkID(auraToFind, _, _, ...)
-		local id = select(10, ...)
-		return auraToFind == id
-	end
-	local function checkName(auraToFind, _, _, name)
-		return auraToFind == name
-	end
-	function FindAura(unit, aura, filter)
-		if type(aura) == "number" then
-			return _G.AuraUtil.FindAura(checkID, unit, filter, aura)
-		else
-			return _G.AuraUtil.FindAura(checkName, unit, filter, aura)
-		end
-	end
-end
+local FindAura = ns.Compat.FindAura
 
 --[[============================================================================
 -- Players Auras
@@ -70,8 +55,8 @@ Parrot:RegisterCombatEvent{
 			end,
 		},
 		SPELL_AURA_REFRESH = {
-			check = function(_, _, _, dstGUID, _, _, _, _, _, auraType)
-				return auraType == "BUFF" and dstGUID == playerGUID
+			check = function(_, _, _, dstGUID, _, _, spellId, _, _, auraType)
+				return auraType == "BUFF" and dstGUID == playerGUID and spellId ~= 450552 -- suppress Monk Jade Walk refresh spam (#126)
 			end,
 		},
 	},
@@ -218,7 +203,8 @@ Parrot:RegisterCombatEvent{
 	combatLogEvents = {
 		SPELL_AURA_APPLIED = {
 			check = function(_, _, _, dstGUID, _, _, _, _, _, auraType)
-				return auraType == "BUFF" and dstGUID == UnitGUID("target")
+				local targetGUID = ns.Compat.SafeUnitGUID("target")
+				return auraType == "BUFF" and targetGUID ~= nil and dstGUID == targetGUID
 			end,
 		}
 	},
@@ -240,11 +226,12 @@ Parrot:RegisterCombatEvent{
 	subCategory = L["Auras"],
 	name = "Target buff stack gains",
 	localName = L["Target buff stack gains"],
-	defaultTag = "[Unitname] gains [Buffname] -[Amount]-)",
+	defaultTag = "[Unitname] gains [Buffname] -[Amount]-",
 	combatLogEvents = {
 		SPELL_AURA_APPLIED_DOSE = {
 			check = function(_, _, _, dstGUID, _, _, _, _, _, auraType)
-				return auraType == "BUFF" and dstGUID == UnitGUID("target")
+				local targetGUID = ns.Compat.SafeUnitGUID("target")
+				return auraType == "BUFF" and targetGUID ~= nil and dstGUID == targetGUID
 			end,
 		}
 	},
@@ -253,7 +240,7 @@ Parrot:RegisterCombatEvent{
 		Buffname = "abilityName",
 		Icon = getIcon,
 		Amount = "amount",
-		Unitname = "dstName",
+		Unitname = "recipientName",
 	},
 	tagTranslationsHelp = {
 		Buffname = L["The name of the buff gained."],
@@ -503,7 +490,7 @@ Parrot:RegisterCombatEvent{
 		Name = "abilityName",
 		ItemName = "itemName",
 		Icon = function(info)
-			return GetItemIcon(info.itemID)
+			return ns.Compat.GetItemIconByID(info.itemID)
 		end,
 	},
 	tagTranslationsHelp = {
@@ -530,11 +517,10 @@ Parrot:RegisterCombatEvent{
 		Name = "abilityName",
 		ItemName = "itemName",
 		Icon = function(info)
-			return GetItemIcon(info.itemID)
+			return ns.Compat.GetItemIconByID(info.itemID)
 		end,
 	},
 	tagTranslationsHelp = {
-		Name = L["The name of the item buff lost."],
 		ItemName = L["The name of the item, the buff has faded from."],
 	},
 	color = "e5e5e5", -- light gray
@@ -546,7 +532,8 @@ local function compareUnitAndSpell(ref, info)
 	if not ref.unit or not ref.spell or not info.dstGUID then
 		return false
 	end
-	local good = (info.dstGUID == UnitGUID(ref.unit)) and (ref.auraType == info.auraType)
+	local unitGUID = ns.Compat.SafeUnitGUID(ref.unit)
+	local good = unitGUID ~= nil and (info.dstGUID == unitGUID) and (ref.auraType == info.auraType)
 	if good then
 		if type(ref.spell) == 'number' then
 			return ref.spell == info.spellId
@@ -732,7 +719,8 @@ Parrot:RegisterPrimaryTriggerCondition {
 
 local function checkItemBuff(ref, info)
 	if ref.unit and ref.spell then
-		return ref.spell == info.spellName and UnitGUID(ref.unit) == info.dstGUID
+		local unitGUID = ns.Compat.SafeUnitGUID(ref.unit)
+		return unitGUID ~= nil and ref.spell == info.spellName and unitGUID == info.dstGUID
 	else
 		return false
 	end
@@ -909,7 +897,7 @@ Parrot:RegisterSecondaryTriggerCondition {
 			return false
 		end
 		local name, _, count, _, _, _, unitCaster = FindAura(param.unit, param.spell)
-		if name and count == param.stackcount then
+		if name and (not param.stackcount or count == param.stackcount) then
 			if param.byplayer == true then
 				return unitCaster == "player"
 			else
@@ -1016,36 +1004,6 @@ Parrot:RegisterSecondaryTriggerCondition {
 			end
 		else
 			return false
-		end
-	end,
-}
-
-Parrot:RegisterSecondaryTriggerCondition {
-	subCategory = L["Auras"],
-	name = "Item buff active",
-	localName = L["Item buff active"],
-	param = {
-		type = 'select',
-		values = {
-			[0] = L["Any"],
-			[1] = L["Main hand"],
-			[2] = L["Off hand"],
-			[3] = L["Both"],
-		},
-	},
-	check = function(param)
-		if not param then
-			return false
-		end
-		local main, _, _, _, off = GetWeaponEnchantInfo()
-		if param == 0 then
-			return main == 1 or off == 1
-		elseif param == 1 then
-			return main == 1
-		elseif param == 2 then
-			return off == 1
-		elseif param == 3 then
-			return main == 1 and off == 1
 		end
 	end,
 }

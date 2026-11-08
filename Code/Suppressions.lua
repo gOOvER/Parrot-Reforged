@@ -148,7 +148,7 @@ function module:OnOptionsCreate()
 end
 
 function module:ShouldSuppress(text)
-	if not self:IsEnabled() then
+	if not self:IsEnabled() or ns.Compat.IsSecretValue(text) then
 		return false
 	end
 	for suppression, escape in next, db.suppressions do
