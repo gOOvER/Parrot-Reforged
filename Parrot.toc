@@ -23,7 +23,7 @@
 ## Category: Combat
 ## X-Credits: ckknight, profalbert, nebula
 ## X-Category: Combat
-## X-License: LGPLv3.0
+## X-License: LGPL-2.1
 ## X-Website: https://github.com/gOOvER/Parrot-Reforged
 ## X-Curse-Project-ID: 101768
 ## X-WoWI-ID: 24143

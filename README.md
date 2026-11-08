@@ -12,7 +12,7 @@
   [![Wago.io](https://img.shields.io/badge/Wago.io-Parrot%20Reforged-c1272d?logo=wagtail&logoColor=white)](https://addons.wago.io/addons/parrot-reforged)
   [![WoWInterface](https://img.shields.io/badge/WoWInterface-24143-0078d7)](https://www.wowinterface.com/downloads/info24143.html)
   [![WoW Versions](https://img.shields.io/badge/WoW-Retail%20%7C%20MoP%20%7C%20Cata%20%7C%20Wrath%20%7C%20TBC%20%7C%20Classic%20%7C%20Forever-f8b700?logo=battle.net&logoColor=white)](#-supported-wow-versions)
-  [![License: LGPL v3](https://img.shields.io/badge/License-LGPLv3-blue.svg)](LICENSE)
+  [![License: LGPL v2.1](https://img.shields.io/badge/License-LGPLv2.1-blue.svg)](LICENSE)
   [![Support](https://img.shields.io/badge/Support-donate.goover.dev-ff69b4?logo=ko-fi&logoColor=white)](https://donate.goover.dev)
 </div>
 
@@ -65,6 +65,6 @@
 
 - **Original Authors**: ckknight, profalbert, nebula
 - **Reforged Modernization**: **gOOvER** ([goover.dev](https://www.goover.dev))
-- **License**: [GNU Lesser General Public License v3.0 (LGPL-3.0)](LICENSE)
+- **License**: [GNU Lesser General Public License v2.1 (LGPL-2.1)](LICENSE)
 - **Support Development**: [donate.goover.dev](https://donate.goover.dev) • [Ko-fi](https://ko-fi.com/oldnoob) • [Buy Me a Coffee](https://www.buymeacoffee.com/goover)
 
