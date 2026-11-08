@@ -297,7 +297,7 @@ end
 local db = nil
 local defaults = {
 	profile = {
-		gameText = false,
+		gameText = true,
 		gameSelf = false,
 		gameDamage = false,
 		gamePetDamage = false,
@@ -533,26 +533,47 @@ do
 		floatingCombatTextReactives = "COMBAT_TEXT_SHOW_REACTIVES",
 	}
 
-	local function cvarExists(name)
-		return GetCVarDefault and GetCVarDefault(name) ~= nil
-	end
+	local LEGACY_CVAR_ALIASES = {
+		floatingCombatTextCombatDamage = { "CombatDamage" },
+		floatingCombatTextCombatLogPeriodicSpells = { "CombatLogPeriodicSpells" },
+		floatingCombatTextPetMeleeDamage = { "PetMeleeDamage" },
+		floatingCombatTextPetSpellDamage = { "PetSpellDamage" },
+		floatingCombatTextCombatHealing = { "CombatHealing" },
+	}
 
-	local function realCVarName(cvar)
-		if cvarExists(cvar .. "_v2") then
-			return cvar .. "_v2"
+	local function cvarExists(name)
+		if C_CVar and C_CVar.GetCVarDefault then
+			local ok, val = pcall(C_CVar.GetCVarDefault, name)
+			if ok and val ~= nil then return true end
 		end
-		return cvar
+		if GetCVarDefault then
+			local ok, val = pcall(GetCVarDefault, name)
+			if ok and val ~= nil then return true end
+		end
+		return false
 	end
 
 	local function SafeSetCVar(var, val)
 		if cvarExists(var) then
-			pcall(SetCVar, var, val)
+			if C_CVar and C_CVar.SetCVar then
+				pcall(C_CVar.SetCVar, var, val)
+			elseif SetCVar then
+				pcall(SetCVar, var, val)
+			end
 		end
 	end
 
 	local function setFCT(cvar, on)
 		local val = on and "1" or "0"
-		SafeSetCVar(realCVarName(cvar), val)
+		SafeSetCVar(cvar, val)
+		SafeSetCVar(cvar .. "_v2", val)
+		local aliases = LEGACY_CVAR_ALIASES[cvar]
+		if aliases then
+			for _, alias in ipairs(aliases) do
+				SafeSetCVar(alias, val)
+				SafeSetCVar(alias .. "_v2", val)
+			end
+		end
 		local gvar = GLOBAL_FOR_CVAR[cvar]
 		if gvar then
 			_G[gvar] = val
@@ -560,13 +581,24 @@ do
 	end
 
 	local function forceApplyEnableFCT(on)
-		setFCT("enableFloatingCombatText", true)
 		setFCT("enableFloatingCombatText", on)
+		if not on and _G.CombatText then
+			pcall(function()
+				_G.CombatText:UnregisterAllEvents()
+				_G.CombatText:Hide()
+			end)
+		end
 	end
 
 	local function refreshBlizzardCombatText()
 		if CombatText_UpdateDisplayedMessages then
 			pcall(CombatText_UpdateDisplayedMessages)
+		end
+		if db and db.gameText and not db.gameSelf and _G.CombatText then
+			pcall(function()
+				_G.CombatText:UnregisterAllEvents()
+				_G.CombatText:Hide()
+			end)
 		end
 	end
 
@@ -634,9 +666,21 @@ do
 			Parrot:UpdateFCT()
 		end
 	end)
+
+	Parrot:RegisterEvent("PLAYER_ENTERING_WORLD", function()
+		Parrot:UpdateFCT()
+	end)
 end
 
 function Parrot:OnEnable()
+	if db and not db.fctDefaultsMigratedV1 then
+		db.fctDefaultsMigratedV1 = true
+		db.gameText = true
+		db.gameSelf = false
+		db.gameDamage = false
+		db.gamePetDamage = false
+		db.gameHealing = false
+	end
 	self:UpdateFCT()
 end
 
