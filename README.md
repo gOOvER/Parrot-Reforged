@@ -35,7 +35,7 @@
 ## ✨ Key Features
 
 - 🏛️ **Modern Dark-Gold Configuration Suite & Precision Movers**:
-  - **Standalone Dark-Gold Window (`ParrotConfigFrame`)**: Vertical category sidebar, live `A-` / `13pt` / `A+` UI font scaling, `LibWindow-1.1` position memory, and footer quick-action buttons (**Demo Burst**, **Unlock/Lock Anchors**, **Modern Preset**, **Enable/Disable**).
+  - **Standalone Resizable Dark-Gold Window (`ParrotConfigFrame`)**: Vertical category sidebar, full-height scrollable sections with wide non-truncating 2-column layouts, live `A-` / `13pt` / `A+` UI font scaling, bottom-right resize grip + `LibWindow-1.1` position memory, and footer quick-action buttons (**Demo Burst**, **Unlock/Lock Anchors**, **Modern Preset**, **Enable/Disable**).
   - **Precision Scroll Area Anchors**: `DIALOG`-strata dark-gold movers with center crosshair alignment guides (`+`), **1px / 10px nudge buttons (`◄ ▲ ▼ ►`)**, Right-Click to lock, and realistic multi-school preview bursts.
   - **Interactive `LibQTip-1.0` Minimap Tooltip**: Live status, active profile, CombatLog/Fallback engine indicator, clickable quick actions, and mouse button shortcuts.
 - ✨ **Modern Sub-Pixel Animation Engine & Nameplate Anchoring**:

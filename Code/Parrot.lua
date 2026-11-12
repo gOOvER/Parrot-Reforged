@@ -1009,33 +1009,43 @@ function Parrot:OnOptionsCreate()
 		disabled = function() return not self:IsEnabled() end,
 		order = 1,
 		args = {
-			minimap = {
-				type = "toggle",
-				name = L["Minimap icon"] or "Minimap icon",
-				desc = L["Show the minimap icon"] or "Show the minimap icon",
-				get = function()
-					return not (db.minimap and db.minimap.hide)
-				end,
-				set = function(_, value)
-					db.minimap = db.minimap or {}
-					db.minimap.hide = not value
-					local LDBIcon = LibStub("LibDBIcon-1.0", true)
-					if LDBIcon and LDBIcon:IsRegistered("Parrot") then
-						LDBIcon:Refresh("Parrot", db.minimap)
-					end
-				end,
-				order = 0,
+			interfaceGroup = {
+				type = "group",
+				inline = true,
+				name = L["General settings"],
+				order = 1,
+				args = {
+					minimap = {
+						type = "toggle",
+						name = L["Minimap icon"] or "Minimap icon",
+						desc = L["Show the minimap icon"] or "Show the minimap icon",
+						width = 1.7,
+						get = function()
+							return not (db.minimap and db.minimap.hide)
+						end,
+						set = function(_, value)
+							db.minimap = db.minimap or {}
+							db.minimap.hide = not value
+							local LDBIcon = LibStub("LibDBIcon-1.0", true)
+							if LDBIcon and LDBIcon:IsRegistered("Parrot") then
+								LDBIcon:Refresh("Parrot", db.minimap)
+							end
+						end,
+						order = 1,
+					},
+				},
 			},
 			lootGroup = {
 				type = "group",
 				inline = true,
 				name = L["Loot"],
-				order = 2,
+				order = 30,
 				args = {
 					lootCoinIcons = {
 						type = "toggle",
 						name = L["Use Coin Icons for Money"],
 						desc = L["Display inline gold, silver, and copper coin icons instead of letter symbols when looting money."],
+						width = 1.85,
 						order = 1,
 						get = function() return db.lootCoinIcons ~= false end,
 						set = function(_, val) db.lootCoinIcons = val end,
@@ -1044,6 +1054,7 @@ function Parrot:OnOptionsCreate()
 						type = "select",
 						name = L["Minimum Loot Quality"],
 						desc = L["Ignore looted items below this quality threshold. Epic and higher items automatically trigger an icon glow."],
+						width = 1.5,
 						order = 2,
 						values = {
 							[0] = (_G.ITEM_QUALITY_COLORS and _G.ITEM_QUALITY_COLORS[0] and _G.ITEM_QUALITY_COLORS[0].hex or "|cff9d9d9d") .. (_G.ITEM_QUALITY0_DESC or "Poor") .. "|r",
@@ -1061,6 +1072,7 @@ function Parrot:OnOptionsCreate()
 				type = "group",
 				inline = true,
 				name = _G.COMBAT_TEXT_LABEL or "Floating Combat Text",
+				order = 40,
 				get = function(info) return db[info[#info]] end,
 				set = setCVarOption,
 				args = {
@@ -1085,6 +1097,7 @@ function Parrot:OnOptionsCreate()
 						name = _G.COMBAT_SELF or "Scrolling Combat Text for Self",
 						desc = _G.OPTION_TOOLTIP_SHOW_COMBAT_TEXT or "",
 						disabled = disabled,
+						width = 1.7,
 						order = 1,
 					},
 					gameDamage = {
@@ -1092,6 +1105,7 @@ function Parrot:OnOptionsCreate()
 						name = _G.SHOW_DAMAGE_TEXT or _G.DAMAGE or "Damage",
 						desc = _G.OPTION_TOOLTIP_SHOW_DAMAGE or "",
 						disabled = disabled,
+						width = 1.7,
 						order = 2,
 					},
 					gamePetDamage = {
@@ -1099,6 +1113,7 @@ function Parrot:OnOptionsCreate()
 						name = _G.SHOW_PET_MELEE_DAMAGE or _G.PET or "Pet Damage",
 						desc = _G.OPTION_TOOLTIP_SHOW_PET_MELEE_DAMAGE or "",
 						disabled = disabled,
+						width = 1.7,
 						order = 3,
 					},
 					gameHealing = {
@@ -1106,6 +1121,7 @@ function Parrot:OnOptionsCreate()
 						name = _G.SHOW_COMBAT_HEALING or _G.HEALS or "Healing",
 						desc = _G.OPTION_TOOLTIP_SHOW_COMBAT_HEALING or "",
 						disabled = disabled,
+						width = 1.7,
 						order = 4,
 					},
 					gameLowHealth = {
@@ -1113,6 +1129,7 @@ function Parrot:OnOptionsCreate()
 						name = _G.COMBAT_TEXT_SHOW_LOW_HEALTH_MANA_TEXT or "Low Mana & Health",
 						desc = _G.OPTION_TOOLTIP_COMBAT_TEXT_SHOW_LOW_HEALTH_MANA or "",
 						disabled = disabled,
+						width = 1.7,
 						order = 5,
 					},
 					gameReactives = {
@@ -1120,6 +1137,7 @@ function Parrot:OnOptionsCreate()
 						name = _G.COMBAT_TEXT_SHOW_REACTIVES_TEXT or "Spell Alerts",
 						desc = _G.OPTION_TOOLTIP_COMBAT_TEXT_SHOW_REACTIVES or "",
 						disabled = disabled,
+						width = 1.7,
 						order = 6,
 					},
 				},

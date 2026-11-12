@@ -424,7 +424,19 @@ function module:OnOptionsCreate()
 		PROC = L["Proc glow"],
 	}
 
-	Parrot.options.args.general.args.alpha = {
+	local generalArgs = Parrot.options.args.general.args
+	local interfaceArgs = (generalArgs.interfaceGroup and generalArgs.interfaceGroup.args) or generalArgs
+
+	interfaceArgs.iconsEnabled = {
+		type = "toggle",
+		name = L["Enable icons"],
+		desc = L["Set whether icons should be enabled or disabled altogether."],
+		width = 1.7,
+		order = 2,
+		get = getOption,
+		set = setOption,
+	}
+	interfaceArgs.alpha = {
 		type = "range",
 		name = L["Text transparency"],
 		desc = L["How opaque/transparent the text should be."],
@@ -433,11 +445,12 @@ function module:OnOptionsCreate()
 		step = 0.01,
 		bigStep = 0.05,
 		isPercent = true,
-		order = 10,
+		width = 1.7,
+		order = 3,
 		get = getOption,
 		set = setOption,
 	}
-	Parrot.options.args.general.args.iconAlpha = {
+	interfaceArgs.iconAlpha = {
 		type = "range",
 		name = L["Icon transparency"],
 		desc = L["How opaque/transparent icons should be."],
@@ -446,19 +459,12 @@ function module:OnOptionsCreate()
 		step = 0.01,
 		bigStep = 0.05,
 		isPercent = true,
-		order = 11,
+		width = 1.7,
+		order = 4,
 		get = getOption,
 		set = setOption,
 	}
-	Parrot.options.args.general.args.iconsEnabled = {
-		type = "toggle",
-		name = L["Enable icons"],
-		desc = L["Set whether icons should be enabled or disabled altogether."],
-		order = 12,
-		get = getOption,
-		set = setOption,
-	}
-	Parrot.options.args.general.args.strata = {
+	interfaceArgs.strata = {
 		type = "select",
 		name = L["Strata"],
 		desc = L["Layering of the scrolling text relative to other frames."],
@@ -478,99 +484,19 @@ function module:OnOptionsCreate()
 			"DIALOG",
 			"TOOLTIP",
 		},
-		order = 13,
+		width = 1.7,
+		order = 5,
 		get = getOption,
 		set = function(info, value)
 			setOption(info, value)
 			ParrotFrame:SetFrameStrata(value)
 		end,
 	}
-	Parrot.options.args.general.args.visualEffects = {
-		type = "group",
-		inline = true,
-		name = L["Visual effects & animations"],
-		order = 20,
-		get = getOption,
-		set = setOption,
-		args = {
-			smoothEasing = {
-				type = "toggle",
-				name = L["Smooth sub-pixel animations"],
-				desc = L["Enables sub-pixel rendering, smooth easing curves, soft fade-in/out, and damped anti-overlap movement."],
-				order = 1,
-			},
-			dynamicScale = {
-				type = "toggle",
-				name = L["Dynamic hit scaling"],
-				desc = L["Automatically scales numbers based on hit magnitude so big hits stand out and small ticks stay compact."],
-				order = 2,
-			},
-			critScale = {
-				type = "range",
-				name = L["Crit pop scale"],
-				desc = L["Peak zoom multiplier during the initial pop of critical strikes and sticky alerts."],
-				min = 1.0,
-				max = 2.0,
-				step = 0.05,
-				isPercent = true,
-				order = 3,
-			},
-			dotScale = {
-				type = "range",
-				name = L["DoT / HoT tick scale"],
-				desc = L["Relative size multiplier for periodic damage and healing ticks."],
-				min = 0.60,
-				max = 1.10,
-				step = 0.02,
-				isPercent = true,
-				order = 4,
-			},
-			iconBorder = {
-				type = "toggle",
-				name = L["Styled icon borders"],
-				desc = L["Draws a crisp dark border around spell and item icons."],
-				disabled = function() return not db.iconsEnabled end,
-				order = 5,
-			},
-			iconColorBorder = {
-				type = "toggle",
-				name = L["Color icon border by damage school"],
-				desc = L["Tints the icon border with the spell school or event color (golden accent on crits)."],
-				disabled = function() return not db.iconsEnabled or not db.iconBorder end,
-				order = 6,
-			},
-			critGlow = {
-				type = "toggle",
-				name = L["Glow icons on crits & triggers"],
-				desc = L["Highlights spell icons with an animated LibCustomGlow effect on critical hits and triggers."],
-				disabled = function() return not db.iconsEnabled end,
-				order = 7,
-			},
-			critGlowStyle = {
-				type = "select",
-				name = L["Icon glow style"],
-				desc = L["Visual glow style applied to icons on critical strikes and triggers."],
-				values = glowStyleChoices,
-				disabled = function() return not db.iconsEnabled or not db.critGlow end,
-				order = 8,
-			},
-			applyModernPreset = {
-				type = "execute",
-				name = L["Apply Modern Preset"],
-				desc = L["Configures animations (Fountain & Impact), smooth sub-pixel rendering, icon borders/glows, and compact damage formatting."],
-				confirm = true,
-				confirmText = L["Apply modern animation styles (Fountain / Impact) and number formatting to this profile?"],
-				func = function()
-					module:ApplyModernPreset()
-				end,
-				width = "double",
-				order = 9,
-			},
-		},
-	}
 	Parrot.options.args.general.args.font = {
 		type = "group",
+		inline = true,
 		name = L["Master font settings"],
+		order = 10,
 		get = getOption,
 		set = setOption,
 		args = {
@@ -591,6 +517,8 @@ function module:OnOptionsCreate()
 				get = getFontFace,
 				set = setFontFace,
 				itemControl = "DDI-Font",
+				width = 1.7,
+				order = 1,
 			},
 			fontSize = {
 				type = "range",
@@ -598,15 +526,27 @@ function module:OnOptionsCreate()
 				min = 8,
 				max = 48,
 				step = 1,
+				width = 1.7,
+				order = 2,
 			},
 			fontOutline = {
 				type = "select",
 				name = L["Normal font outline"],
 				values = outlineChoices,
+				width = 1.7,
+				order = 3,
 			},
 			fontShadow = {
 				type = "toggle",
 				name = L["Normal font shadow"],
+				width = 1.7,
+				order = 4,
+			},
+			stickySpacer = {
+				type = "description",
+				name = " ",
+				width = "full",
+				order = 5,
 			},
 			stickyFont = {
 				type = "select",
@@ -615,6 +555,8 @@ function module:OnOptionsCreate()
 				get = getFontFace,
 				set = setFontFace,
 				itemControl = "DDI-Font",
+				width = 1.7,
+				order = 6,
 			},
 			stickyFontSize = {
 				type = "range",
@@ -622,15 +564,112 @@ function module:OnOptionsCreate()
 				min = 8,
 				max = 48,
 				step = 1,
+				width = 1.7,
+				order = 7,
 			},
 			stickyFontOutline = {
 				type = "select",
 				name = L["Sticky font outline"],
 				values = outlineChoices,
+				width = 1.7,
+				order = 8,
 			},
 			stickyFontShadow = {
 				type = "toggle",
 				name = L["Sticky font shadow"],
+				width = 1.7,
+				order = 9,
+			},
+		},
+	}
+	Parrot.options.args.general.args.visualEffects = {
+		type = "group",
+		inline = true,
+		name = L["Visual effects & animations"],
+		order = 20,
+		get = getOption,
+		set = setOption,
+		args = {
+			smoothEasing = {
+				type = "toggle",
+				name = L["Smooth sub-pixel animations"],
+				desc = L["Enables sub-pixel rendering, smooth easing curves, soft fade-in/out, and damped anti-overlap movement."],
+				width = 1.7,
+				order = 1,
+			},
+			dynamicScale = {
+				type = "toggle",
+				name = L["Dynamic hit scaling"],
+				desc = L["Automatically scales numbers based on hit magnitude so big hits stand out and small ticks stay compact."],
+				width = 1.7,
+				order = 2,
+			},
+			critScale = {
+				type = "range",
+				name = L["Crit pop scale"],
+				desc = L["Peak zoom multiplier during the initial pop of critical strikes and sticky alerts."],
+				min = 1.0,
+				max = 2.0,
+				step = 0.05,
+				isPercent = true,
+				width = 1.7,
+				order = 3,
+			},
+			dotScale = {
+				type = "range",
+				name = L["DoT / HoT tick scale"],
+				desc = L["Relative size multiplier for periodic damage and healing ticks."],
+				min = 0.60,
+				max = 1.10,
+				step = 0.02,
+				isPercent = true,
+				width = 1.7,
+				order = 4,
+			},
+			iconBorder = {
+				type = "toggle",
+				name = L["Styled icon borders"],
+				desc = L["Draws a crisp dark border around spell and item icons."],
+				disabled = function() return not db.iconsEnabled end,
+				width = 1.7,
+				order = 5,
+			},
+			iconColorBorder = {
+				type = "toggle",
+				name = L["Color icon border by damage school"],
+				desc = L["Tints the icon border with the spell school or event color (golden accent on crits)."],
+				disabled = function() return not db.iconsEnabled or not db.iconBorder end,
+				width = 1.7,
+				order = 6,
+			},
+			critGlow = {
+				type = "toggle",
+				name = L["Glow icons on crits & triggers"],
+				desc = L["Highlights spell icons with an animated LibCustomGlow effect on critical hits and triggers."],
+				disabled = function() return not db.iconsEnabled end,
+				width = 1.85,
+				order = 7,
+			},
+			critGlowStyle = {
+				type = "select",
+				name = L["Icon glow style"],
+				desc = L["Visual glow style applied to icons on critical strikes and triggers."],
+				values = glowStyleChoices,
+				disabled = function() return not db.iconsEnabled or not db.critGlow end,
+				width = 1.5,
+				order = 8,
+			},
+			applyModernPreset = {
+				type = "execute",
+				name = L["Apply Modern Preset"],
+				desc = L["Configures animations (Fountain & Impact), smooth sub-pixel rendering, icon borders/glows, and compact damage formatting."],
+				confirm = true,
+				confirmText = L["Apply modern animation styles (Fountain / Impact) and number formatting to this profile?"],
+				func = function()
+					module:ApplyModernPreset()
+				end,
+				width = "double",
+				order = 9,
 			},
 		},
 	}

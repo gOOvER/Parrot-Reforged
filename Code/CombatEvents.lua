@@ -411,116 +411,162 @@ function module:OnOptionsCreate()
 		get = getOption,
 		set = setOption,
 		args = {
-			enabled = {
-				name = L["Enabled"],
+			generalOptions = {
 				type = 'group',
-				inline = true,
+				name = L["General"],
+				desc = L["General settings"],
+				order = 0,
 				args = {
-					disable_in_raid = {
-						type = 'toggle',
-						name = L["Disable in raids"],
-						desc = L["Disable this module while in a raid instance"],
-						set = function(info, value)
-							setOption(info, value)
-							checkZone()
-						end,
+					enabled = {
+						name = L["Enabled"],
+						type = 'group',
+						inline = true,
 						order = 1,
-					},
-					disable_in_battleground = {
-						type = 'toggle',
-						name = L["Disable in pvp"],
-						desc = L["Disable this module while in a battleground"],
-						set = function(info, value)
-							setOption(info, value)
-							checkZone()
-						end,
-						order = 2,
-					},
-				},
-			},
-			textoptions = {
-				name = L["Text options"],
-				type = 'group',
-				inline = true,
-				args = {
-					hideFullOverheals = {
-						type = 'select',
-						name = L["Hide full overheals"],
-						desc = L["Do not show heal events when 100% of the amount is overheal"],
-						values = {
-							[0] = L["Off"],
-							[1] = L["Only HoTs"],
-							[2] = L["Only direct heals"],
-							[3] = L["On"],
+						args = {
+							disable_in_raid = {
+								type = 'toggle',
+								name = L["Disable in raids"],
+								desc = L["Disable this module while in a raid instance"],
+								width = 1.6,
+								set = function(info, value)
+									setOption(info, value)
+									checkZone()
+								end,
+								order = 1,
+							},
+							disable_in_battleground = {
+								type = 'toggle',
+								name = L["Disable in pvp"],
+								desc = L["Disable this module while in a battleground"],
+								width = 1.6,
+								set = function(info, value)
+									setOption(info, value)
+									checkZone()
+								end,
+								order = 2,
+							},
 						},
-						order = 1,
 					},
-					sep = {
-						type = "description",
-						name = "",
+					textoptions = {
+						name = L["Text options"],
+						type = 'group',
+						inline = true,
 						order = 2,
+						args = {
+							hideFullOverheals = {
+								type = 'select',
+								name = L["Hide full overheals"],
+								desc = L["Do not show heal events when 100% of the amount is overheal"],
+								width = 1.6,
+								values = {
+									[0] = L["Off"],
+									[1] = L["Only HoTs"],
+									[2] = L["Only direct heals"],
+									[3] = L["On"],
+								},
+								order = 1,
+							},
+							sep = {
+								type = "description",
+								name = "",
+								width = "full",
+								order = 2,
+							},
+							hideSkillNames = {
+								type = 'toggle',
+								name = L["Hide skill names"],
+								desc = L["Always hide skill names even when present in the tag"],
+								width = 1.6,
+								order = 3,
+							},
+							hideUnitNames = {
+								type = 'toggle',
+								name = L["Hide unit names"],
+								desc = L["Always hide unit names even when present in the tag"],
+								width = 1.6,
+								order = 4,
+							},
+							hideRealm = {
+								type = 'toggle',
+								name = L["Hide realm"],
+								desc = L["Hide realm in player names"],
+								width = 1.6,
+								order = 5,
+							},
+							classcolor = {
+								type = 'toggle',
+								name = L["Color by class"],
+								desc = L["Color unit names by class"],
+								width = 1.6,
+								order = 6,
+							},
+							shortenAmount = {
+								type = 'toggle',
+								name = L["Shorten amounts"],
+								desc = L["Abbreviate number values displayed (26500 -> 26.5k)"],
+								width = 1.6,
+								order = 7,
+							},
+							shortenThreshold = {
+								type = 'select',
+								name = L["Shorten threshold"],
+								desc = L["Minimum value above which numbers are abbreviated (smaller numbers use thousands separators if enabled)."],
+								disabled = function() return not db.shortenAmount end,
+								width = 1.6,
+								values = {
+									[1000] = "1,000+ (1.2k)",
+									[10000] = "10,000+ (12.5k)",
+									[100000] = "100,000+ (125k)",
+									[1000000] = "1,000,000+ (1.25M)",
+								},
+								order = 8,
+							},
+							breakUpAmount = {
+								type = 'toggle',
+								name = L["Break up amounts"],
+								desc = L["Break up number values with '%s' (26500 -> %s)"]:format(LARGE_NUMBER_SEPERATOR or ",", BreakUpLargeNumbers and BreakUpLargeNumbers(26500) or "26,500"),
+								width = "full",
+								order = 9,
+							},
+						},
 					},
-					hideSkillNames = {
-						type = 'toggle',
-						name = L["Hide skill names"],
-						desc = L["Always hide skill names even when present in the tag"],
+					behaviorGroup = {
+						name = L["Events"],
+						type = 'group',
+						inline = true,
 						order = 3,
-					},
-					hideUnitNames = {
-						type = 'toggle',
-						name = L["Hide unit names"],
-						desc = L["Always hide unit names even when present in the tag"],
-						order = 4,
-					},
-					hideRealm = {
-						type = 'toggle',
-						name = L["Hide realm"],
-						desc = L["Hide realm in player names"],
-						order = 5,
-					},
-					classcolor = {
-						type = 'toggle',
-						name = L["Color by class"],
-						desc = L["Color unit names by class"],
-						order = 6,
-					},
-					shortenAmount = {
-						type = 'toggle',
-						name = L["Shorten amounts"],
-						desc = L["Abbreviate number values displayed (26500 -> 26.5k)"],
-						order = 7,
-					},
-					shortenThreshold = {
-						type = 'select',
-						name = L["Shorten threshold"],
-						desc = L["Minimum value above which numbers are abbreviated (smaller numbers use thousands separators if enabled)."],
-						disabled = function() return not db.shortenAmount end,
-						values = {
-							[1000] = "1,000+ (1.2k)",
-							[10000] = "10,000+ (12.5k)",
-							[100000] = "100,000+ (125k)",
-							[1000000] = "1,000,000+ (1.25M)",
+						args = {
+							stickyCrit = {
+								type = 'toggle',
+								name = L["Sticky crits"],
+								desc = L["Enable to show crits in the sticky style."],
+								width = 1.6,
+								order = 1,
+							},
+							onlyShowCrits = {
+								type = 'toggle',
+								name = L["Only show crits"] or "Only show crits",
+								desc = L["Only show critical strikes and critical heals"] or "Only show critical strikes and critical heals",
+								width = 1.6,
+								order = 2,
+							},
+							totemEvents = {
+								type = 'toggle',
+								name = L["Show guardian events"],
+								desc = L["Whether events involving your guardian(s) (totems, ...) should be displayed"],
+								width = 1.6,
+								order = 3,
+							},
+							cancelUIDSoon = {
+								type = 'toggle',
+								name = L["Hide events used in triggers"],
+								desc = L["Hides combat events when they were used in triggers"],
+								width = 1.6,
+								order = 4,
+							},
 						},
-						order = 8,
 					},
-					breakUpAmount = {
-						type = 'toggle',
-						name = L["Break up amounts"],
-						desc = L["Break up number values with '%s' (26500 -> %s)"]:format(LARGE_NUMBER_SEPERATOR or ",", BreakUpLargeNumbers and BreakUpLargeNumbers(26500) or "26,500"),
-						order = 9,
-					}
 				},
-			},
-			totemEvents = {
-				type = 'toggle',
-				name = L["Show guardian events"],
-				desc = L["Whether events involving your guardian(s) (totems, ...) should be displayed"],
-			},
-			cancelUIDSoon = {
-				type = 'toggle',
-				name = L["Hide events used in triggers"],
-				desc = L["Hides combat events when they were used in triggers"],
-				width = "double",
 			},
 			Incoming = {
 				type = 'group',
@@ -534,19 +580,20 @@ function module:OnOptionsCreate()
 				name = L["Outgoing"],
 				desc = L["Outgoing events are events which you do to a mob or another player."],
 				args = {},
-				order = 1,
+				order = 2,
 			},
 			Notification = {
 				type = 'group',
 				name = L["Notification"],
 				desc = L["Notification events are available to notify you of certain actions."],
 				args = {},
-				order = 1,
+				order = 3,
 			},
 			modifier = {
 				type = 'group',
 				name = L["Event modifiers"],
 				desc = L["Options for event modifiers."],
+				order = 4,
 				get = getSubOption,
 				set = setSubOption,
 				args = {
@@ -562,6 +609,7 @@ function module:OnOptionsCreate()
 				type = 'group',
 				name = L["Damage types"],
 				desc = L["Options for damage types."],
+				order = 5,
 				args = {
 					color = {
 						order = 1,
@@ -577,25 +625,17 @@ function module:OnOptionsCreate()
 					}
 				}
 			},
-			stickyCrit = {
-				type = 'toggle',
-				name = L["Sticky crits"],
-				desc = L["Enable to show crits in the sticky style."],
-			},
-			onlyShowCrits = {
-				type = 'toggle',
-				name = L["Only show crits"] or "Only show crits",
-				desc = L["Only show critical strikes and critical heals"] or "Only show critical strikes and critical heals",
-			},
 			throttle = {
 				type = 'group',
 				name = L["Throttle events"],
 				desc = L["Whether to merge mass events into single instances instead of excessive spam."],
+				order = 6,
 				args = {
 					useShortThrottleText = {
 						type = 'toggle',
 						name = L["Short texts"],
 						desc = L["Use short throttle-texts (like \"2++\" instead of \"2 crits\")"],
+						width = 1.6,
 						order = 1,
 					},
 					modernThrottleBadge = {
@@ -603,12 +643,14 @@ function module:OnOptionsCreate()
 						name = L["Modern hit badges"],
 						desc = L["Display compact multi-hit counters (e.g. x5, x3!) instead of legacy (3x, 2++) suffixes."],
 						disabled = function() return not db.useShortThrottleText or db.hideThrottleText end,
+						width = 1.6,
 						order = 2,
 					},
 					hideThrottleText = {
 						type = 'toggle',
 						name = L["Hide throttle text"] or "Hide throttle text",
 						desc = L["Hide the throttle hit/heal count suffix"] or "Hide the throttle hit/heal count suffix",
+						width = 1.6,
 						order = 3,
 					},
 				},
@@ -620,6 +662,7 @@ function module:OnOptionsCreate()
 				type = 'group',
 				name = L["Filters"],
 				desc = L["Filters to be checked for a minimum amount of damage/healing/etc before showing."],
+				order = 7,
 				args = {},
 				hidden = function()
 					return not next(events_opt.args.filters.args)
@@ -629,18 +672,21 @@ function module:OnOptionsCreate()
 				type = 'group',
 				name = L["Spell filters"],
 				desc = L["Filters that are applied to a single spell"],
+				order = 8,
 				args = {},
 			},
 			sthrottles = {
 				type = 'group',
 				name = L["Spell throttles"],
 				desc = L["Throttles that are applied to a single spell"],
+				order = 9,
 				args = {},
 			},
 			abbreviate = {
 				type = 'group',
 				name = L["Shorten spell names"],
 				desc = L["How or whether to shorten spell names."],
+				order = 10,
 				args = {
 					abbreviateStyle = {
 						type = 'select',

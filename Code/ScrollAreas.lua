@@ -1201,6 +1201,8 @@ function module:OnOptionsCreate()
 				type = 'toggle',
 				name = L["Configuration mode"],
 				desc = L["Enter configuration mode, allowing you to move around the scroll areas and see them in action."],
+				width = 1.5,
+				order = 1,
 				get = function()
 					return configMode
 				end,
@@ -1210,6 +1212,7 @@ function module:OnOptionsCreate()
 				type = 'execute',
 				name = L["New scroll area"],
 				desc = L["Add a new scroll area."],
+				order = 2,
 				func = function()
 					local shouldConfig = configMode
 					if shouldConfig then

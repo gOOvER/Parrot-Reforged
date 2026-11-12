@@ -40,6 +40,17 @@ if AceGUI and (AceGUI:GetWidgetVersion("ParrotConfigHost") or 0) < 1 then
 			SetStatusTable = function() end,
 			SetTitle = function() end,
 		}
+		frame:SetScript("OnSizeChanged", function(_, width, height)
+			if width and width > 0 and height and height > 0 then
+				content:SetWidth(width)
+				content.width = width
+				content:SetHeight(height)
+				content.height = height
+				if widget.PerformLayout then
+					widget:PerformLayout()
+				end
+			end
+		end)
 		return AceGUI:RegisterAsContainer(widget)
 	end
 	AceGUI:RegisterWidgetType("ParrotConfigHost", Constructor, 1)
@@ -129,13 +140,25 @@ end
 local function CreateMainWindow()
 	if mainFrame then return mainFrame end
 
+	local savedW = Parrot.db and Parrot.db.profile and tonumber(Parrot.db.profile.uiWidth) or 1020
+	local savedH = Parrot.db and Parrot.db.profile and tonumber(Parrot.db.profile.uiHeight) or 700
+	savedW = math.max(880, math.min(1440, savedW))
+	savedH = math.max(560, math.min(980, savedH))
+
 	local f = CreateFrame("Frame", "ParrotConfigFrame", UIParent, BackdropTemplateMixin and "BackdropTemplate" or nil)
-	f:SetSize(960, 660)
+	f:SetSize(savedW, savedH)
 	f:SetPoint("CENTER")
 	f:SetFrameStrata("HIGH")
 	f:SetToplevel(true)
 	f:EnableMouse(true)
 	f:SetMovable(true)
+	f:SetResizable(true)
+	if f.SetResizeBounds then
+		f:SetResizeBounds(880, 560, 1440, 980)
+	else
+		if f.SetMinResize then f:SetMinResize(880, 560) end
+		if f.SetMaxResize then f:SetMaxResize(1440, 980) end
+	end
 	f:SetClampedToScreen(true)
 	UIStyle.ApplyElvUIWindowSkin(f)
 
@@ -228,9 +251,34 @@ local function CreateMainWindow()
 	f.btnToggle = btnToggle
 
 	local btnClose = UIStyle.CreateButton(footer, _G.CLOSE or L["Close"], 92, 24)
-	btnClose:SetPoint("RIGHT", -10, 0)
+	btnClose:SetPoint("RIGHT", -16, 0)
 	btnClose:SetScript("OnClick", function()
 		f:Hide()
+	end)
+
+	-- Bottom-right resize grip
+	local sizer = CreateFrame("Button", nil, f)
+	sizer:SetSize(16, 16)
+	sizer:SetPoint("BOTTOMRIGHT", -mult, mult)
+	sizer:SetFrameLevel(footer:GetFrameLevel() + 5)
+	sizer:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+	sizer:SetHighlightTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
+	sizer:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
+	sizer:SetScript("OnMouseDown", function(_, button)
+		if button == "LeftButton" then
+			f:StartSizing("BOTTOMRIGHT")
+		end
+	end)
+	sizer:SetScript("OnMouseUp", function()
+		f:StopMovingOrSizing()
+		if Parrot.db and Parrot.db.profile then
+			Parrot.db.profile.uiWidth = math.floor(f:GetWidth() + 0.5)
+			Parrot.db.profile.uiHeight = math.floor(f:GetHeight() + 0.5)
+		end
+		if f.SaveWindowPosition then
+			f:SaveWindowPosition()
+		end
+		ConfigWindow:SelectSection(activeSection)
 	end)
 
 	local profileBadge = footer:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
