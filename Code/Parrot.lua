@@ -515,8 +515,8 @@ function Parrot:OnInitialize()
 		tip:SetAutoHideDelay(0.20, anchorFrame, function()
 			activeTip = nil
 		end)
-		if ns.UIStyle and tip.SetBackdrop then
-			ns.UIStyle.ApplyBox(tip, { 0.06, 0.06, 0.09, 0.96 }, { 0.72, 0.58, 0.18, 0.95 })
+		if ns.UIStyle and ns.UIStyle.StyleTooltip then
+			ns.UIStyle.StyleTooltip(tip)
 		end
 
 		local ver = (C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetadata("Parrot", "Version"))
@@ -574,9 +574,10 @@ function Parrot:OnInitialize()
 
 	local LDB = LibStub("LibDataBroker-1.1", true)
 	if LDB then
-		local dataObj = LDB:NewDataObject("Parrot", {
+		local ldbSpec = {
 			type = "launcher",
 			icon = "Interface\\Icons\\Spell_Nature_ForceOfNature",
+			label = "Parrot Reforged",
 			OnClick = function(_, button)
 				ReleaseParrotTooltip()
 				if IsShiftKeyDown() then
@@ -601,11 +602,15 @@ function Parrot:OnInitialize()
 					Parrot:TestMessages()
 				end
 			end,
-			OnEnter = function(frame)
+		}
+		-- LibDBIcon-1.0 checks OnTooltipShow BEFORE OnEnter; only define OnEnter when LibQTip is available
+		-- so LibDBIcon and ElvUI_WindTools MinimapButtons invoke our interactive LibQTip tooltip properly.
+		if LibQTip then
+			ldbSpec.OnEnter = function(frame)
 				ShowInteractiveLDBTooltip(frame)
-			end,
-			OnTooltipShow = function(tooltip)
-				if LibQTip then return end
+			end
+		else
+			ldbSpec.OnTooltipShow = function(tooltip)
 				if not tooltip or not tooltip.AddLine then return end
 				tooltip:AddLine("|cffffd100Parrot Reforged|r")
 				tooltip:AddLine(L["Floating Combat Text of awesomeness. Caw. It'll eat your crackers."], 0.8, 0.8, 0.8, true)
@@ -613,9 +618,9 @@ function Parrot:OnInitialize()
 				tooltip:AddLine("|cffeda55f" .. L["Left-Click"] .. ":|r " .. L["Open Configuration"], 0.2, 1, 0.2)
 				tooltip:AddLine("|cffeda55f" .. L["Right-Click"] .. ":|r " .. L["Unlock / Lock Anchors"], 0.2, 1, 0.2)
 				tooltip:AddLine("|cffeda55f" .. L["Middle-Click"] .. ":|r " .. L["Demo Burst"], 0.2, 1, 0.2)
-			end,
-			label = "Parrot Reforged",
-		})
+			end
+		end
+		local dataObj = LDB:NewDataObject("Parrot", ldbSpec)
 		local LDBIcon = LibStub("LibDBIcon-1.0", true)
 		if LDBIcon and dataObj then
 			LDBIcon:Register("Parrot", dataObj, self.db.profile.minimap)

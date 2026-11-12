@@ -44,6 +44,7 @@ local defaults = {
 		dynamicScale = true,
 		dotScale = 0.88,
 		strata = "HIGH",
+		useElvUIFont = false,
 		font = DEFAULT_FONT_NAME,
 		fontSize = 18,
 		fontOutline = "THICKOUTLINE",
@@ -89,27 +90,63 @@ function module:NAME_PLATE_UNIT_REMOVED(_, unit)
 	plateUnitToGuid[unit] = nil
 end
 
+local function isRegionUsable(region)
+	if not region then
+		return false
+	end
+	if region.IsForbidden then
+		local okForb, forbidden = pcall(region.IsForbidden, region)
+		if not okForb or forbidden then
+			return false
+		end
+	end
+	if region.IsShown then
+		local okShown, shown = pcall(region.IsShown, region)
+		if not okShown or not shown then
+			return false
+		end
+	end
+	return true
+end
+
+local function resolveVisualPlateRegion(plate)
+	-- Prefer ElvUI NamePlates oUF visible healthbar (plate.unitFrame.Health),
+	-- then ElvUI/Plater unitFrame, then Blizzard UnitFrame.healthBar, then raw plate.
+	local okUF, uf = pcall(function() return plate.unitFrame end)
+	if okUF and isRegionUsable(uf) then
+		local okHealth, health = pcall(function() return uf.Health end)
+		if okHealth and isRegionUsable(health) then
+			return health
+		end
+		return uf
+	end
+	local okBlizzUF, blizzUF = pcall(function() return plate.UnitFrame end)
+	if okBlizzUF and isRegionUsable(blizzUF) then
+		local okHB, hb = pcall(function() return blizzUF.healthBar end)
+		if okHB and isRegionUsable(hb) then
+			return hb
+		end
+		return blizzUF
+	end
+	return plate
+end
+
 local function getUnitPlateCenterOffset(unit, extraX, extraY)
 	if not (C_NamePlate and C_NamePlate.GetNamePlateForUnit and unit) then
 		return nil, nil
 	end
 	local okPlate, plate = pcall(C_NamePlate.GetNamePlateForUnit, unit)
-	if not okPlate or not plate then
+	if not okPlate or not isRegionUsable(plate) then
 		return nil, nil
 	end
-	if plate.IsForbidden then
-		local okForb, forbidden = pcall(plate.IsForbidden, plate)
-		if not okForb or forbidden then
+	local visualRegion = resolveVisualPlateRegion(plate)
+	local okCenter, px, py = pcall(visualRegion.GetCenter, visualRegion)
+	if not okCenter then
+		visualRegion = plate
+		okCenter, px, py = pcall(plate.GetCenter, plate)
+		if not okCenter then
 			return nil, nil
 		end
-	end
-	local okShown, shown = pcall(plate.IsShown, plate)
-	if not okShown or not shown then
-		return nil, nil
-	end
-	local okCenter, px, py = pcall(plate.GetCenter, plate)
-	if not okCenter then
-		return nil, nil
 	end
 	px = SafeNumber(px)
 	py = SafeNumber(py)
@@ -117,7 +154,7 @@ local function getUnitPlateCenterOffset(unit, extraX, extraY)
 		return nil, nil
 	end
 
-	local okPS, plateScale = pcall(plate.GetEffectiveScale, plate)
+	local okPS, plateScale = pcall(visualRegion.GetEffectiveScale, visualRegion)
 	plateScale = (okPS and SafeNumber(plateScale)) or 1
 	local uiScale = SafeNumber(UIParent:GetEffectiveScale()) or 1
 	local ratio = (uiScale > 0) and (plateScale / uiScale) or 1
@@ -537,6 +574,16 @@ function module:OnOptionsCreate()
 		get = getOption,
 		set = setOption,
 		args = {
+			useElvUIFont = {
+				type = "toggle",
+				name = L["Use ElvUI font"],
+				desc = L["Automatically use ElvUI's configured general/combat font for floating combat text."],
+				width = "full",
+				order = 0,
+				hidden = function()
+					return not _G.ElvUI
+				end,
+			},
 			font = {
 				type = "select",
 				name = L["Normal font face"],
@@ -783,7 +830,21 @@ function module:ShowMessage(text, area, sticky, r, g, b, font, fontSize, outline
 		DisablePixelSnap(fs)
 	end
 
-	local fontPath = LibSharedMedia:Fetch("font", font, true)
+	local fontPath = nil
+	if db.useElvUIFont and _G.ElvUI then
+		local E = _G.ElvUI[1]
+		if E then
+			if E.db and E.db.general and E.db.general.font then
+				fontPath = LibSharedMedia:Fetch("font", E.db.general.font, true)
+			end
+			if not fontPath and E.media then
+				fontPath = E.media.combatFont or E.media.normFont
+			end
+		end
+	end
+	if not fontPath then
+		fontPath = LibSharedMedia:Fetch("font", font, true)
+	end
 	if not fontPath and _G.ElvUI then
 		local E = _G.ElvUI[1]
 		if E and E.db and E.db.general and E.db.general.font then
@@ -825,6 +886,15 @@ function module:ShowMessage(text, area, sticky, r, g, b, font, fontSize, outline
 			holder.gloss:SetHeight(math_max(2, iconSize * 0.28))
 
 			if db.iconBorder ~= false then
+				local mult = (ns.UIStyle and ns.UIStyle.GetElvUI() and ns.UIStyle.GetMult()) or nil
+				local outerOff = mult and (2 * mult) or 1.5
+				local rimOff = mult and (1 * mult) or 0.8
+				holder.outerBorder:ClearAllPoints()
+				holder.outerBorder:SetPoint("TOPLEFT", holder, "TOPLEFT", -outerOff, outerOff)
+				holder.outerBorder:SetPoint("BOTTOMRIGHT", holder, "BOTTOMRIGHT", outerOff, -outerOff)
+				holder.colorRim:ClearAllPoints()
+				holder.colorRim:SetPoint("TOPLEFT", holder, "TOPLEFT", -rimOff, rimOff)
+				holder.colorRim:SetPoint("BOTTOMRIGHT", holder, "BOTTOMRIGHT", rimOff, -rimOff)
 				holder.outerBorder:Show()
 				holder.colorRim:Show()
 				holder.gloss:Show()

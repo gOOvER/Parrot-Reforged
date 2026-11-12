@@ -137,7 +137,7 @@ local function CreateMainWindow()
 	f:EnableMouse(true)
 	f:SetMovable(true)
 	f:SetClampedToScreen(true)
-	UIStyle.ApplyBox(f, UIStyle.COLORS.mainBg, UIStyle.COLORS.mainBorder)
+	UIStyle.ApplyElvUIWindowSkin(f)
 
 	-- Allow closing with ESC
 	if type(UISpecialFrames) == "table" then
@@ -174,11 +174,12 @@ local function CreateMainWindow()
 	end)
 
 	-- Footer bar with Quick Actions
+	local mult = UIStyle.GetMult()
 	local footer = CreateFrame("Frame", nil, f, BackdropTemplateMixin and "BackdropTemplate" or nil)
-	footer:SetPoint("BOTTOMLEFT", 1, 1)
-	footer:SetPoint("BOTTOMRIGHT", -1, 1)
+	footer:SetPoint("BOTTOMLEFT", mult, mult)
+	footer:SetPoint("BOTTOMRIGHT", -mult, mult)
 	footer:SetHeight(38)
-	UIStyle.ApplyBox(footer, UIStyle.COLORS.footerBg, { 0.30, 0.25, 0.12, 0.85 })
+	UIStyle.ApplyBox(footer, UIStyle.COLORS.footerBg, nil)
 
 	local btnTest = UIStyle.CreateButton(footer, L["Demo Burst"], 116, 24)
 	btnTest:SetPoint("LEFT", 10, 0)
@@ -247,14 +248,14 @@ local function CreateMainWindow()
 	sidebar:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, 0)
 	sidebar:SetPoint("BOTTOMLEFT", footer, "TOPLEFT", 0, 0)
 	sidebar:SetWidth(212)
-	UIStyle.ApplyBox(sidebar, UIStyle.COLORS.sidebarBg, { 0.25, 0.22, 0.14, 0.85 })
+	UIStyle.ApplyBox(sidebar, UIStyle.COLORS.sidebarBg, UIStyle.GetElvUI() and nil or { 0.25, 0.22, 0.14, 0.85 })
 
 	local yOff = -10
 	for i = 1, #NAV_ITEMS do
 		local item = NAV_ITEMS[i]
 		if item.key == "sharing" then
 			local sep = sidebar:CreateTexture(nil, "ARTWORK")
-			sep:SetHeight(1)
+			sep:SetHeight(mult)
 			sep:SetPoint("TOPLEFT", 12, yOff - 3)
 			sep:SetPoint("TOPRIGHT", -12, yOff - 3)
 			sep:SetColorTexture(0.45, 0.36, 0.14, 0.55)
@@ -274,7 +275,7 @@ local function CreateMainWindow()
 	local contentArea = CreateFrame("Frame", nil, f, BackdropTemplateMixin and "BackdropTemplate" or nil)
 	contentArea:SetPoint("TOPLEFT", sidebar, "TOPRIGHT", 0, 0)
 	contentArea:SetPoint("BOTTOMRIGHT", footer, "TOPRIGHT", 0, 0)
-	UIStyle.ApplyBox(contentArea, { 0.05, 0.05, 0.07, 0.70 }, { 0.20, 0.20, 0.24, 0.70 })
+	UIStyle.ApplyBox(contentArea, { 0.05, 0.05, 0.07, 0.70 }, UIStyle.GetElvUI() and nil or { 0.20, 0.20, 0.24, 0.70 })
 	f.contentArea = contentArea
 
 	hostWidget = AceGUI:Create("ParrotConfigHost")

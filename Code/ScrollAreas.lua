@@ -252,7 +252,10 @@ local function showOffsetBox(k)
 		offsetBox:SetFrameStrata("DIALOG")
 		offsetBox:RegisterForClicks("RightButtonUp")
 
-		if ns.UIStyle and offsetBox.SetBackdrop then
+		if _G.ElvUI and offsetBox.SetTemplate then
+			offsetBox:SetTemplate("Transparent")
+			offsetBox:SetBackdropBorderColor(1, 0.82, 0, 0.92)
+		elseif ns.UIStyle and offsetBox.SetBackdrop then
 			ns.UIStyle.ApplyBox(offsetBox, { 0.06, 0.06, 0.09, 0.84 }, { 0.88, 0.70, 0.18, 0.95 })
 		else
 			local bg = offsetBox:CreateTexture("$parentBackground", "BACKGROUND")
@@ -261,20 +264,17 @@ local function showOffsetBox(k)
 			offsetBox.bg = bg
 		end
 
-		if _G.ElvUI and offsetBox.SetTemplate then
-			offsetBox:SetTemplate("Transparent")
-			offsetBox:SetBackdropBorderColor(1, 0.82, 0, 0.92)
-		end
+		local mult = (ns.UIStyle and ns.UIStyle.GetMult()) or 1
 
 		-- Subtle center crosshair guides for pixel-accurate alignment
 		local hLine = offsetBox:CreateTexture(nil, "BORDER")
-		hLine:SetHeight(1)
+		hLine:SetHeight(mult)
 		hLine:SetPoint("LEFT", offsetBox, "LEFT", 8, 0)
 		hLine:SetPoint("RIGHT", offsetBox, "RIGHT", -8, 0)
 		hLine:SetColorTexture(1.0, 0.82, 0.0, 0.22)
 
 		local vLine = offsetBox:CreateTexture(nil, "BORDER")
-		vLine:SetWidth(1)
+		vLine:SetWidth(mult)
 		vLine:SetPoint("TOP", offsetBox, "TOP", 0, -22)
 		vLine:SetPoint("BOTTOM", offsetBox, "BOTTOM", 0, 22)
 		vLine:SetColorTexture(1.0, 0.82, 0.0, 0.22)

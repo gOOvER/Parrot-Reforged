@@ -52,6 +52,9 @@
 - 🎯 **Automatic Class Procs, Triggers & `!PAR1!` Profile Sharing**:
   - **Zero-Setup Automatic Class Procs (`SPELL_ACTIVATION_OVERLAY_GLOW_SHOW`)**: Automatically displays any glowing class ability proc across Classic SoD, Cata, MoP, and Retail Midnight with spell icon, glow, cooldown, and spell ignore filter.
   - **Import / Export (`!PAR1!`)**: Share full profiles (`!PAR1!P!...`) or standalone custom triggers (`!PAR1!T!...`) via `AceSerializer-3.0` + `LibDeflate`.
+- 🎨 **First-Class ElvUI, WindTools & BenikUI Integration**:
+  - **Pixel-Perfect `SetTemplate("Transparent")` UI**: `ParrotConfigFrame`, scroll area movers, and `1px/10px` nudge buttons automatically adopt ElvUI's `E.mult` 1-device-pixel borders, `E.media.normFont`, `E.TexCoords` icon cropping, `ElvUI_WindTools` soft shadows & `LibQTip` skinning, and `ElvUI_BenikUI` window styling without double-skinning Ace3 widgets.
+  - **ElvUI NamePlate & Font Sync**: Anchors nameplate combat text directly to ElvUI's visible `plate.unitFrame.Health` bar (`0` taint), renders pixel-perfect `E.mult` spell icon borders, and provides a dedicated **Use ElvUI font** toggle in Master Font Settings.
 
 ---
 
