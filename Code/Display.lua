@@ -8,9 +8,18 @@ local Parrot_Suppressions
 local Parrot_ScrollAreas
 
 local LibSharedMedia = LibStub("LibSharedMedia-3.0")
+local LibCustomGlow = LibStub("LibCustomGlow-1.0", true)
 local DEFAULT_FONT_NAME = LibSharedMedia:GetDefault("font")
 
+local Easing = ns.Easing
+local DisablePixelSnap = Easing and Easing.DisablePixelSnap or function() end
+local SafeNumber = ns.Compat.SafeNumber
+local SafeUnitGUID = ns.Compat.SafeUnitGUID
+
 local newList, del = Parrot.newList, Parrot.del
+local math_max, math_min, math_sqrt = math.max, math.min, math.sqrt
+
+local WHITE8X8 = [[Interface\BUTTONS\WHITE8X8]]
 
 local ParrotFrame = CreateFrame("Frame", "ParrotFrame", UIParent)
 ParrotFrame:Hide()
@@ -26,18 +35,273 @@ local defaults = {
 		alpha = 1,
 		iconAlpha = 1,
 		iconsEnabled = true,
+		iconBorder = true,
+		iconColorBorder = true,
+		critGlow = true,
+		critGlowStyle = "PIXEL",
+		smoothEasing = true,
+		critScale = 1.35,
+		dynamicScale = true,
+		dotScale = 0.88,
 		strata = "HIGH",
-		font = DEFAULT_FONT_NAME, -- "Friz Quadrata TT",
+		font = DEFAULT_FONT_NAME,
 		fontSize = 18,
 		fontOutline = "THICKOUTLINE",
 		fontShadow = true,
-		stickyFont = DEFAULT_FONT_NAME, -- "Friz Quadrata TT",
+		stickyFont = DEFAULT_FONT_NAME,
 		stickyFontSize = 26,
 		stickyFontOutline = "THICKOUTLINE",
 		stickyFontShadow = true,
 	},
 }
 
+-- ============================================================================
+-- Taint-Free Nameplate Screen Coordinate Resolver
+-- Never parents frames to NamePlates; only reads screen coordinates safely.
+-- ============================================================================
+local guidToPlateUnit = {}
+local plateUnitToGuid = {}
+
+local function clearNameplateCache()
+	wipe(guidToPlateUnit)
+	wipe(plateUnitToGuid)
+end
+
+function module:NAME_PLATE_UNIT_ADDED(_, unit)
+	if type(unit) ~= "string" or ns.Compat.IsSecretValue(unit) then
+		return
+	end
+	local guid = SafeUnitGUID(unit)
+	if guid then
+		guidToPlateUnit[guid] = unit
+		plateUnitToGuid[unit] = guid
+	end
+end
+
+function module:NAME_PLATE_UNIT_REMOVED(_, unit)
+	if type(unit) ~= "string" or ns.Compat.IsSecretValue(unit) then
+		return
+	end
+	local guid = plateUnitToGuid[unit]
+	if guid and guidToPlateUnit[guid] == unit then
+		guidToPlateUnit[guid] = nil
+	end
+	plateUnitToGuid[unit] = nil
+end
+
+local function getUnitPlateCenterOffset(unit, extraX, extraY)
+	if not (C_NamePlate and C_NamePlate.GetNamePlateForUnit and unit) then
+		return nil, nil
+	end
+	local okPlate, plate = pcall(C_NamePlate.GetNamePlateForUnit, unit)
+	if not okPlate or not plate then
+		return nil, nil
+	end
+	if plate.IsForbidden then
+		local okForb, forbidden = pcall(plate.IsForbidden, plate)
+		if not okForb or forbidden then
+			return nil, nil
+		end
+	end
+	local okShown, shown = pcall(plate.IsShown, plate)
+	if not okShown or not shown then
+		return nil, nil
+	end
+	local okCenter, px, py = pcall(plate.GetCenter, plate)
+	if not okCenter then
+		return nil, nil
+	end
+	px = SafeNumber(px)
+	py = SafeNumber(py)
+	if not (px and py) then
+		return nil, nil
+	end
+
+	local okPS, plateScale = pcall(plate.GetEffectiveScale, plate)
+	plateScale = (okPS and SafeNumber(plateScale)) or 1
+	local uiScale = SafeNumber(UIParent:GetEffectiveScale()) or 1
+	local ratio = (uiScale > 0) and (plateScale / uiScale) or 1
+
+	local uiW = SafeNumber(UIParent:GetWidth()) or GetScreenWidth()
+	local uiH = SafeNumber(UIParent:GetHeight()) or GetScreenHeight()
+
+	local offsetX = (px * ratio) - (uiW * 0.5) + (extraX or 0)
+	local offsetY = (py * ratio) - (uiH * 0.5) + (extraY or 20)
+	return offsetX, offsetY
+end
+
+local function resolveNameplateOffset(anchorMode, unitGUID, extraX, extraY)
+	if not anchorMode or anchorMode == "SCREEN" then
+		return nil, nil
+	end
+	if anchorMode == "TARGET" then
+		return getUnitPlateCenterOffset("target", extraX, extraY)
+	end
+
+	-- anchorMode == "NAMEPLATE"
+	local safeGUID = (type(unitGUID) == "string" and not ns.Compat.IsSecretValue(unitGUID) and unitGUID ~= "") and unitGUID or nil
+	if safeGUID then
+		local cachedUnit = guidToPlateUnit[safeGUID]
+		if cachedUnit then
+			local ox, oy = getUnitPlateCenterOffset(cachedUnit, extraX, extraY)
+			if ox and oy then
+				return ox, oy
+			end
+		end
+		if SafeUnitGUID("target") == safeGUID then
+			local ox, oy = getUnitPlateCenterOffset("target", extraX, extraY)
+			if ox and oy then
+				return ox, oy
+			end
+		end
+		if SafeUnitGUID("mouseover") == safeGUID then
+			local ox, oy = getUnitPlateCenterOffset("mouseover", extraX, extraY)
+			if ox and oy then
+				return ox, oy
+			end
+		end
+		if SafeUnitGUID("focus") == safeGUID then
+			local ox, oy = getUnitPlateCenterOffset("focus", extraX, extraY)
+			if ox and oy then
+				return ox, oy
+			end
+		end
+		return nil, nil
+	end
+
+	-- Fallback when GUID is unavailable/secret (e.g. Midnight fallback feed): use current hostile target nameplate
+	return getUnitPlateCenterOffset("target", extraX, extraY)
+end
+
+-- ============================================================================
+-- LibCustomGlow-1.0 Helpers
+-- ============================================================================
+local hasProcGlowAtlas = nil
+local function supportsProcGlow()
+	if hasProcGlowAtlas == nil then
+		hasProcGlowAtlas = (C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo("UI-HUD-ActionBar-Proc-Loop-Flipbook")) ~= nil
+	end
+	return hasProcGlowAtlas
+end
+
+local glowColorScratch = { 1, 0.82, 0.15, 0.95 }
+
+local function stopIconGlow(holder)
+	if not holder or not holder._activeGlowStyle then
+		return
+	end
+	local glow = LibCustomGlow or LibStub("LibCustomGlow-1.0", true)
+	local style = holder._activeGlowStyle
+	holder._activeGlowStyle = nil
+	if not glow then
+		return
+	end
+	if style == "PIXEL" and glow.PixelGlow_Stop then
+		pcall(glow.PixelGlow_Stop, holder, "ParrotGlow")
+	elseif style == "AUTOCAST" and glow.AutoCastGlow_Stop then
+		pcall(glow.AutoCastGlow_Stop, holder, "ParrotGlow")
+	elseif style == "BUTTON" and glow.ButtonGlow_Stop then
+		pcall(glow.ButtonGlow_Stop, holder)
+	elseif style == "PROC" and glow.ProcGlow_Stop then
+		pcall(glow.ProcGlow_Stop, holder, "ParrotGlow")
+	end
+end
+
+local function startIconGlow(holder, r, g, b)
+	local glow = LibCustomGlow or LibStub("LibCustomGlow-1.0", true)
+	if not glow or not holder or not db.critGlow then
+		return
+	end
+	stopIconGlow(holder)
+
+	local style = db.critGlowStyle or "PIXEL"
+	if style == "NONE" then
+		return
+	end
+	if style == "PROC" and (not glow.ProcGlow_Start or not supportsProcGlow()) then
+		style = "PIXEL"
+	end
+
+	glowColorScratch[1] = r or 1
+	glowColorScratch[2] = g or 0.82
+	glowColorScratch[3] = b or 0.15
+	glowColorScratch[4] = 0.95
+
+	if style == "AUTOCAST" and glow.AutoCastGlow_Start then
+		local ok = pcall(glow.AutoCastGlow_Start, holder, glowColorScratch, 8, 0.25, 1.0, 1, 1, "ParrotGlow")
+		if ok then
+			holder._activeGlowStyle = "AUTOCAST"
+		end
+	elseif style == "BUTTON" and glow.ButtonGlow_Start then
+		local ok = pcall(glow.ButtonGlow_Start, holder, glowColorScratch, 0.15)
+		if ok then
+			holder._activeGlowStyle = "BUTTON"
+		end
+	elseif style == "PROC" and glow.ProcGlow_Start then
+		local ok = pcall(glow.ProcGlow_Start, holder, {
+			color = { glowColorScratch[1], glowColorScratch[2], glowColorScratch[3], glowColorScratch[4] },
+			startAnim = false,
+			key = "ParrotGlow",
+		})
+		if ok then
+			holder._activeGlowStyle = "PROC"
+		end
+	elseif glow.PixelGlow_Start then
+		local ok = pcall(glow.PixelGlow_Start, holder, glowColorScratch, 6, 0.28, nil, 1.5, 1, 1, false, "ParrotGlow")
+		if ok then
+			holder._activeGlowStyle = "PIXEL"
+		end
+	end
+end
+
+-- ============================================================================
+-- Dynamic Hit-Size Rolling Average
+-- ============================================================================
+local rollingAvgAmount = nil
+
+local function computeDynamicScale(meta, sticky)
+	if not db.dynamicScale or not meta then
+		if meta and meta.isPeriodic and db.dotScale and db.dotScale ~= 1 then
+			return db.dotScale
+		end
+		return 1
+	end
+
+	local amt = SafeNumber(meta.amount)
+	if not amt or amt <= 0 then
+		if meta.isPeriodic then
+			return db.dotScale or 0.88
+		end
+		return 1
+	end
+
+	if not meta.isPeriodic then
+		if not rollingAvgAmount or rollingAvgAmount <= 0 then
+			rollingAvgAmount = amt
+		else
+			rollingAvgAmount = rollingAvgAmount * 0.88 + amt * 0.12
+		end
+	elseif not rollingAvgAmount then
+		rollingAvgAmount = amt * 2
+	end
+
+	local baseAvg = (rollingAvgAmount and rollingAvgAmount > 0) and rollingAvgAmount or amt
+	local ratio = amt / baseAvg
+	if meta.isPeriodic then
+		local baseDot = db.dotScale or 0.88
+		return Easing.Clamp(baseDot * (0.90 + 0.10 * math_sqrt(ratio)), 0.75, 1.08)
+	end
+
+	local scale = 0.88 + 0.12 * math_sqrt(ratio)
+	if sticky or meta.isCrit then
+		return Easing.Clamp(scale, 0.95, 1.28)
+	end
+	return Easing.Clamp(scale, 0.85, 1.22)
+end
+
+-- ============================================================================
+-- Lifecycle & Options
+-- ============================================================================
 function module:OnProfileChanged()
 	db = self.db.profile
 	ParrotFrame:SetFrameStrata(db.strata)
@@ -50,6 +314,12 @@ function module:OnInitialize()
 	Parrot_AnimationStyles = Parrot:GetModule("AnimationStyles")
 	Parrot_Suppressions = Parrot:GetModule("Suppressions")
 	Parrot_ScrollAreas = Parrot:GetModule("ScrollAreas")
+end
+
+function module:OnEnable()
+	pcall(self.RegisterEvent, self, "NAME_PLATE_UNIT_ADDED", "NAME_PLATE_UNIT_ADDED")
+	pcall(self.RegisterEvent, self, "NAME_PLATE_UNIT_REMOVED", "NAME_PLATE_UNIT_REMOVED")
+	pcall(self.RegisterEvent, self, "PLAYER_ENTERING_WORLD", clearNameplateCache)
 end
 
 local function setOption(info, value)
@@ -79,6 +349,27 @@ local function setFontFace(info, value)
 	end
 end
 
+function module:ApplyModernPreset()
+	db.smoothEasing = true
+	db.iconBorder = true
+	db.iconColorBorder = true
+	db.critGlow = true
+	db.critGlowStyle = "PIXEL"
+	db.critScale = 1.35
+	db.dynamicScale = true
+	db.dotScale = 0.88
+	db.fontOutline = "THICKOUTLINE"
+	db.stickyFontOutline = "THICKOUTLINE"
+
+	if Parrot_ScrollAreas and Parrot_ScrollAreas.ApplyModernScrollPreset then
+		Parrot_ScrollAreas:ApplyModernScrollPreset()
+	end
+	local ceMod = Parrot:GetModule("CombatEvents", true)
+	if ceMod and ceMod.ApplyModernEventPreset then
+		ceMod:ApplyModernEventPreset()
+	end
+end
+
 function module:OnOptionsCreate()
 	local outlineChoices = {
 		NONE = L["None"],
@@ -86,6 +377,14 @@ function module:OnOptionsCreate()
 		OUTLINE = L["Thin"],
 		["OUTLINE,MONOCHROME"] = L["Thin, Monochrome"],
 		THICKOUTLINE = L["Thick"],
+	}
+
+	local glowStyleChoices = {
+		NONE = L["None"],
+		PIXEL = L["Pixel glow"],
+		AUTOCAST = L["Sparkle glow"],
+		BUTTON = L["Spell alert glow"],
+		PROC = L["Proc glow"],
 	}
 
 	Parrot.options.args.general.args.alpha = {
@@ -97,6 +396,7 @@ function module:OnOptionsCreate()
 		step = 0.01,
 		bigStep = 0.05,
 		isPercent = true,
+		order = 10,
 		get = getOption,
 		set = setOption,
 	}
@@ -109,6 +409,7 @@ function module:OnOptionsCreate()
 		step = 0.01,
 		bigStep = 0.05,
 		isPercent = true,
+		order = 11,
 		get = getOption,
 		set = setOption,
 	}
@@ -116,6 +417,7 @@ function module:OnOptionsCreate()
 		type = "toggle",
 		name = L["Enable icons"],
 		desc = L["Set whether icons should be enabled or disabled altogether."],
+		order = 12,
 		get = getOption,
 		set = setOption,
 	}
@@ -139,11 +441,95 @@ function module:OnOptionsCreate()
 			"DIALOG",
 			"TOOLTIP",
 		},
+		order = 13,
 		get = getOption,
 		set = function(info, value)
 			setOption(info, value)
 			ParrotFrame:SetFrameStrata(value)
 		end,
+	}
+	Parrot.options.args.general.args.visualEffects = {
+		type = "group",
+		inline = true,
+		name = L["Visual effects & animations"],
+		order = 20,
+		get = getOption,
+		set = setOption,
+		args = {
+			smoothEasing = {
+				type = "toggle",
+				name = L["Smooth sub-pixel animations"],
+				desc = L["Enables sub-pixel rendering, smooth easing curves, soft fade-in/out, and damped anti-overlap movement."],
+				order = 1,
+			},
+			dynamicScale = {
+				type = "toggle",
+				name = L["Dynamic hit scaling"],
+				desc = L["Automatically scales numbers based on hit magnitude so big hits stand out and small ticks stay compact."],
+				order = 2,
+			},
+			critScale = {
+				type = "range",
+				name = L["Crit pop scale"],
+				desc = L["Peak zoom multiplier during the initial pop of critical strikes and sticky alerts."],
+				min = 1.0,
+				max = 2.0,
+				step = 0.05,
+				isPercent = true,
+				order = 3,
+			},
+			dotScale = {
+				type = "range",
+				name = L["DoT / HoT tick scale"],
+				desc = L["Relative size multiplier for periodic damage and healing ticks."],
+				min = 0.60,
+				max = 1.10,
+				step = 0.02,
+				isPercent = true,
+				order = 4,
+			},
+			iconBorder = {
+				type = "toggle",
+				name = L["Styled icon borders"],
+				desc = L["Draws a crisp dark border around spell and item icons."],
+				disabled = function() return not db.iconsEnabled end,
+				order = 5,
+			},
+			iconColorBorder = {
+				type = "toggle",
+				name = L["Color icon border by damage school"],
+				desc = L["Tints the icon border with the spell school or event color (golden accent on crits)."],
+				disabled = function() return not db.iconsEnabled or not db.iconBorder end,
+				order = 6,
+			},
+			critGlow = {
+				type = "toggle",
+				name = L["Glow icons on crits & triggers"],
+				desc = L["Highlights spell icons with an animated LibCustomGlow effect on critical hits and triggers."],
+				disabled = function() return not db.iconsEnabled end,
+				order = 7,
+			},
+			critGlowStyle = {
+				type = "select",
+				name = L["Icon glow style"],
+				desc = L["Visual glow style applied to icons on critical strikes and triggers."],
+				values = glowStyleChoices,
+				disabled = function() return not db.iconsEnabled or not db.critGlow end,
+				order = 8,
+			},
+			applyModernPreset = {
+				type = "execute",
+				name = L["Apply Modern Preset"],
+				desc = L["Configures animations (Fountain & Impact), smooth sub-pixel rendering, icon borders/glows, and compact damage formatting."],
+				confirm = true,
+				confirmText = L["Apply modern animation styles (Fountain / Impact) and number formatting to this profile?"],
+				func = function()
+					module:ApplyModernPreset()
+				end,
+				width = "double",
+				order = 9,
+			},
+		},
 	}
 	Parrot.options.args.general.args.font = {
 		type = "group",
@@ -162,8 +548,8 @@ function module:OnOptionsCreate()
 			fontSize = {
 				type = "range",
 				name = L["Normal font size"],
-				min = 6,
-				max = 32,
+				min = 8,
+				max = 48,
 				step = 1,
 			},
 			fontOutline = {
@@ -186,8 +572,8 @@ function module:OnOptionsCreate()
 			stickyFontSize = {
 				type = "range",
 				name = L["Sticky font size"],
-				min = 6,
-				max = 32,
+				min = 8,
+				max = 48,
 				step = 1,
 			},
 			stickyFontOutline = {
@@ -199,18 +585,111 @@ function module:OnOptionsCreate()
 				type = "toggle",
 				name = L["Sticky font shadow"],
 			},
-		}
+		},
 	}
 end
 
+-- ============================================================================
+-- Frame, FontString & Styled Icon Pools
+-- ============================================================================
 local freeFrames = {}
 local wildFrames = {}
 local frame_num = 0
 local frameIDs = {}
-local freeTextures = {}
+local freeIconHolders = {}
 local texture_num = 0
 local freeFontStrings = {}
 local fontString_num = 0
+
+local function acquireIconHolder(parent)
+	local holder = next(freeIconHolders)
+	if holder then
+		freeIconHolders[holder] = nil
+		holder:SetParent(parent)
+		holder:ClearAllPoints()
+		holder:Show()
+		return holder
+	end
+
+	texture_num = texture_num + 1
+	holder = CreateFrame("Frame", "ParrotFrameIconHolder" .. texture_num, parent)
+
+	local outerBorder = holder:CreateTexture(nil, "BACKGROUND", nil, -2)
+	outerBorder:SetTexture(WHITE8X8)
+	outerBorder:SetVertexColor(0.04, 0.04, 0.06, 0.92)
+	outerBorder:SetPoint("TOPLEFT", holder, "TOPLEFT", -1.5, 1.5)
+	outerBorder:SetPoint("BOTTOMRIGHT", holder, "BOTTOMRIGHT", 1.5, -1.5)
+	DisablePixelSnap(outerBorder)
+	holder.outerBorder = outerBorder
+
+	local colorRim = holder:CreateTexture(nil, "BACKGROUND", nil, -1)
+	colorRim:SetTexture(WHITE8X8)
+	colorRim:SetPoint("TOPLEFT", holder, "TOPLEFT", -0.8, 0.8)
+	colorRim:SetPoint("BOTTOMRIGHT", holder, "BOTTOMRIGHT", 0.8, -0.8)
+	DisablePixelSnap(colorRim)
+	holder.colorRim = colorRim
+
+	local tex = holder:CreateTexture("ParrotFrameTexture" .. texture_num, "ARTWORK", nil, 0)
+	tex:SetAllPoints(holder)
+	DisablePixelSnap(tex)
+	holder.tex = tex
+
+	local gloss = holder:CreateTexture(nil, "OVERLAY", nil, 1)
+	gloss:SetTexture(WHITE8X8)
+	gloss:SetVertexColor(1, 1, 1, 0.07)
+	gloss:SetPoint("TOPLEFT", holder, "TOPLEFT", 0, 0)
+	gloss:SetPoint("BOTTOMRIGHT", holder, "TOPRIGHT", 0, -4)
+	DisablePixelSnap(gloss)
+	holder.gloss = gloss
+
+	return holder
+end
+
+local function releaseIconHolder(holder)
+	if not holder then
+		return
+	end
+	stopIconGlow(holder)
+	holder:Hide()
+	holder.tex:SetTexture(nil)
+	holder:ClearAllPoints()
+	holder:SetParent(ParrotFrame)
+	freeIconHolders[holder] = true
+end
+
+local function releaseFrame(f, scrollArea, animationStyle)
+	local cleanup = animationStyle and animationStyle.cleanup
+	if cleanup then
+		cleanup(f, scrollArea.xOffset, scrollArea.yOffset, scrollArea.size, scrollArea[f.sticky and "stickyDirection" or "direction"] or animationStyle.defaultDirection, f.id)
+	end
+	f:SetScale(1)
+	if f.content then
+		f.content:SetScale(1)
+	end
+	f.zoomScale = nil
+	f.baseScale = nil
+	f.useNameplate = nil
+	f.targetGUID = nil
+	f.plateX = nil
+	f.plateY = nil
+	f.plateJitterX = nil
+	f:Hide()
+	freeFrames[f] = true
+
+	local fs = f.fs
+	if fs then
+		fs:Hide()
+		fs:SetParent(ParrotFrame)
+		freeFontStrings[fs] = true
+		f.fs = nil
+	end
+
+	if f.iconHolder then
+		releaseIconHolder(f.iconHolder)
+		f.iconHolder = nil
+	end
+	f.icon = nil
+end
 
 --[[----------------------------------------------------------------------------------
 Arguments:
@@ -220,17 +699,13 @@ Arguments:
 	[optional] number - [0, 1] the red part of the color. Default: 1
 	[optional] number - [0, 1] the green part of the color. Default: 1
 	[optional] number - [0, 1] the blue part of the color. Default: 1
-	[optional] string - the font to use (as determined by SharedMedia-1.0). Defaults to the scroll area's setting.
+	[optional] string - the font to use (as determined by LibSharedMedia-3.0). Defaults to the scroll area's setting.
 	[optional] number - the font size to use. Defaults to the scroll area's setting.
 	[optional] string - the font outline to use. Defaults to the scroll area's setting.
-	[optional] string - the icon texture to show alongside the message.
-Notes:
-	* See :GetScrollAreasValidate() for a validation list of scroll areas.
-	* Messages are suppressed if the user has set a specific suppression matching the text.
-Example:
-	Parrot:ShowMessage("Hello, world!", "Notification", false, 0.5, 0.5, 1)
+	[optional] string|number - the icon texture to show alongside the message.
+	[optional] table - optional metadata (amount, isCrit, isTrigger, isPeriodic, unitGUID, schoolR, schoolG, schoolB).
 ------------------------------------------------------------------------------------]]
-function module:ShowMessage(text, area, sticky, r, g, b, font, fontSize, outline, icon)
+function module:ShowMessage(text, area, sticky, r, g, b, font, fontSize, outline, icon, meta)
 	if not module:IsEnabled() then return end
 	if Parrot_Suppressions:ShouldSuppress(text) then return end
 
@@ -283,21 +758,31 @@ function module:ShowMessage(text, area, sticky, r, g, b, font, fontSize, outline
 	local frame = next(freeFrames)
 	if frame then
 		frame:ClearAllPoints()
+		frame:SetScale(1)
 		freeFrames[frame] = nil
 	else
 		frame_num = frame_num + 1
 		frame = CreateFrame("Frame", "ParrotFrameFrame" .. frame_num, ParrotFrame)
+		local content = CreateFrame("Frame", nil, frame)
+		content:SetPoint("CENTER", frame, "CENTER", 0, 0)
+		frame.content = content
 	end
+	local content = frame.content
+	content:SetScale(1)
 
 	local fs = next(freeFontStrings)
 	if fs then
 		fs:ClearAllPoints()
 		freeFontStrings[fs] = nil
-		fs:SetParent(frame)
+		fs:SetParent(content)
 	else
 		fontString_num = fontString_num + 1
-		fs = frame:CreateFontString("ParrotFrameFontString" .. fontString_num, "ARTWORK", "SystemFont_Shadow_Small")
+		fs = content:CreateFontString("ParrotFrameFontString" .. fontString_num, "ARTWORK", "SystemFont_Shadow_Small")
 	end
+	if db.smoothEasing ~= false then
+		DisablePixelSnap(fs)
+	end
+
 	local fontPath = LibSharedMedia:Fetch("font", font, true)
 	if not fontPath and _G.ElvUI then
 		local E = _G.ElvUI[1]
@@ -310,49 +795,86 @@ function module:ShowMessage(text, area, sticky, r, g, b, font, fontSize, outline
 	end
 	fs:SetFont(fontPath or LibSharedMedia:Fetch("font", font) or _G.STANDARD_TEXT_FONT, fontSize, outline)
 	if shadow then
-		fs:SetShadowColor(0, 0, 0, 1)
+		local so = sticky and 2 or 1.5
+		fs:SetShadowOffset(so, -so)
+		fs:SetShadowColor(0, 0, 0, 0.9)
 	else
 		fs:SetShadowColor(0, 0, 0, 0)
 	end
 	frame.fs = fs
 
-	local texture
+	local isCrit = sticky or (meta and meta.isCrit) or false
+	local isTrigger = meta and meta.isTrigger or false
+
+	local holder, texture
 	if icon and db.iconsEnabled and scrollArea.iconSide ~= "DISABLE" then
 		if type(icon) == "number" or icon ~= "Interface\\Icons\\Temp" then
-			texture = next(freeTextures)
-			if texture then
-				texture:Show()
-				texture:ClearAllPoints()
-				freeTextures[texture] = nil
-				texture:SetParent(frame)
-			else
-				texture_num = texture_num + 1
-				texture = frame:CreateTexture("ParrotFrameTexture" .. texture_num, "OVERLAY")
-			end
+			holder = acquireIconHolder(content)
+			texture = holder.tex
 			texture:SetTexture(icon)
 			if _G.ElvUI then
 				local E = _G.ElvUI[1]
 				local texCoords = (E and E.TexCoords) or { 0.08, 0.92, 0.08, 0.92 }
 				texture:SetTexCoord(unpack(texCoords))
 			else
-				texture:SetTexCoord(0.07, 0.93, 0.07, 0.93) -- zoom the icon
+				texture:SetTexCoord(0.08, 0.92, 0.08, 0.92)
 			end
-			texture:SetWidth(fontSize)
-			texture:SetHeight(fontSize)
-			frame.icon = texture
+			local iconSize = math_max(12, math.floor(fontSize * 1.05 + 0.5))
+			holder:SetWidth(iconSize)
+			holder:SetHeight(iconSize)
+			holder.gloss:SetHeight(math_max(2, iconSize * 0.28))
+
+			if db.iconBorder ~= false then
+				holder.outerBorder:Show()
+				holder.colorRim:Show()
+				holder.gloss:Show()
+				if db.iconColorBorder ~= false then
+					local br = (meta and meta.schoolR) or r or 1
+					local bg = (meta and meta.schoolG) or g or 1
+					local bb = (meta and meta.schoolB) or b or 1
+					if isCrit and not isTrigger then
+						br = br * 0.45 + 0.55
+						bg = bg * 0.45 + 0.45
+						bb = bb * 0.30 + 0.08
+					end
+					holder.colorRim:SetVertexColor(br, bg, bb, 0.95)
+				else
+					holder.colorRim:SetVertexColor(0.24, 0.24, 0.28, 0.95)
+				end
+			else
+				holder.outerBorder:Hide()
+				holder.colorRim:Hide()
+				holder.gloss:Hide()
+			end
+
+			if isCrit or isTrigger then
+				local gr = (meta and meta.schoolR) or r or 1
+				local gg = (meta and meta.schoolG) or g or 0.82
+				local gb = (meta and meta.schoolB) or b or 0.2
+				if isCrit and not isTrigger then
+					gr = gr * 0.35 + 0.65
+					gg = gg * 0.35 + 0.53
+					gb = gb * 0.25 + 0.10
+				end
+				startIconGlow(holder, gr, gg, gb)
+			end
+
+			frame.iconHolder = holder
+			frame.icon = holder
 		end
 	end
 
-	if texture then
+	if holder then
+		local gap = db.iconBorder ~= false and 5 or 3
 		if scrollArea.iconSide == "RIGHT" then
-			texture:SetPoint("LEFT", fs, "RIGHT", 3, 0)
-			fs:SetPoint("LEFT", frame, "LEFT")
-		else -- scrollArea.iconSide == "LEFT"
-			texture:SetPoint("RIGHT", fs, "LEFT", -3, 0)
-			fs:SetPoint("RIGHT", frame, "RIGHT")
+			holder:SetPoint("LEFT", fs, "RIGHT", gap, 0)
+			fs:SetPoint("LEFT", content, "LEFT", 0, 0)
+		else
+			holder:SetPoint("RIGHT", fs, "LEFT", -gap, 0)
+			fs:SetPoint("RIGHT", content, "RIGHT", 0, 0)
 		end
 	else
-		fs:SetPoint("LEFT", frame, "LEFT")
+		fs:SetPoint("LEFT", content, "LEFT", 0, 0)
 	end
 
 	if r and g and b then
@@ -361,22 +883,37 @@ function module:ShowMessage(text, area, sticky, r, g, b, font, fontSize, outline
 		fs:SetTextColor(1, 1, 1)
 	end
 	fs:SetText(text)
+
 	frame.start = GetTime()
 	frame.scrollArea = scrollArea
 	frame.sticky = sticky
+	frame.baseScale = computeDynamicScale(meta, sticky)
+	frame.zoomScale = nil
+	frame.peakScale = db.critScale or 1.35
+	frame.smoothEasing = (db.smoothEasing ~= false)
+
+	-- Optional Nameplate coordinate tracking
+	local anchorMode = scrollArea.anchorMode
+	if anchorMode and anchorMode ~= "SCREEN" then
+		local unitGUID = meta and meta.unitGUID or nil
+		local npX, npY = resolveNameplateOffset(anchorMode, unitGUID, scrollArea.nameplateXOffset, scrollArea.nameplateYOffset)
+		if npX and npY then
+			frame.useNameplate = true
+			frame.anchorMode = anchorMode
+			frame.targetGUID = unitGUID
+			frame.plateX = npX
+			frame.plateY = npY
+			frame.plateJitterX = (math.random() - 0.5) * 14
+		end
+	end
 
 	if sticky then
+		frame:SetFrameLevel(3)
+	else
 		frame:SetFrameLevel(1)
-	else
-		frame:SetFrameLevel(0)
 	end
 
-	local animationStyle
-	if sticky then
-		animationStyle = scrollArea.stickyAnimationStyle
-	else
-		animationStyle = scrollArea.animationStyle
-	end
+	local animationStyle = sticky and scrollArea.stickyAnimationStyle or scrollArea.animationStyle
 	local aniStyle = Parrot_AnimationStyles:GetAnimationStyle(animationStyle)
 	if not next(wildFrames) then
 		ParrotFrame:Show()
@@ -392,17 +929,13 @@ function module:ShowMessage(text, area, sticky, r, g, b, font, fontSize, outline
 		wildFrames_scrollArea[aniStyle] = wildFrames_scrollArea_aniStyle
 	end
 	wildFrames_scrollArea_aniStyle.length = scrollArea[sticky and "stickySpeed" or "speed"] or 3
+
 	local frameIDs_scrollArea = frameIDs[scrollArea]
 	if not frameIDs_scrollArea then
 		frameIDs_scrollArea = newList()
 		frameIDs[scrollArea] = frameIDs_scrollArea
 	end
-	local frameIDs_scrollArea_aniStyle = frameIDs_scrollArea[aniStyle]
-	if not frameIDs_scrollArea_aniStyle then
-		frameIDs_scrollArea_aniStyle = 1
-	else
-		frameIDs_scrollArea_aniStyle = frameIDs_scrollArea_aniStyle + 1
-	end
+	local frameIDs_scrollArea_aniStyle = (frameIDs_scrollArea[aniStyle] or 0) + 1
 	frameIDs_scrollArea[aniStyle] = frameIDs_scrollArea_aniStyle
 	frame.id = frameIDs_scrollArea_aniStyle
 
@@ -410,40 +943,60 @@ function module:ShowMessage(text, area, sticky, r, g, b, font, fontSize, outline
 	fs:Show()
 	frame:Show()
 	frame.font, frame.fontSize, frame.fontOutline = fs:GetFont()
+
+	local initX = frame.useNameplate and (frame.plateX + frame.plateJitterX) or scrollArea.xOffset
+	local initY = frame.useNameplate and frame.plateY or scrollArea.yOffset
 	local init = aniStyle.init
 	if init then
-		init(frame, scrollArea.xOffset, scrollArea.yOffset, scrollArea.size, scrollArea[sticky and "stickyDirection" or "direction"] or aniStyle.defaultDirection, frameIDs_scrollArea_aniStyle)
+		init(frame, initX, initY, scrollArea.size, scrollArea[sticky and "stickyDirection" or "direction"] or aniStyle.defaultDirection, frameIDs_scrollArea_aniStyle)
 	end
-	fs:SetAlpha(db.alpha)
-	if texture then
-		texture:SetAlpha(db.iconAlpha)
+
+	local startAlpha = (db.smoothEasing ~= false) and 0.15 or 1
+	fs:SetAlpha(db.alpha * startAlpha)
+	if holder then
+		holder:SetAlpha(db.iconAlpha * startAlpha)
 	end
 	Display_Update()
 end
 Parrot.ShowMessage = module.ShowMessage
 
-local function getSafeFrameSize(fs, icon, fontSize)
+local function getSafeFrameSize(fs, icon, fontSize, iconBorder)
 	local fallbackH = fontSize or 18
-	local w = ns.Compat.SafeNumber(fs:GetWidth()) or (fallbackH * 6)
-	local h = ns.Compat.SafeNumber(fs:GetHeight()) or fallbackH
-	local iconW = icon and (ns.Compat.SafeNumber(icon:GetWidth()) or fallbackH) or 0
-	local iconH = icon and (ns.Compat.SafeNumber(icon:GetHeight()) or fallbackH) or 0
-	return w + (icon and (iconW + 3) or 0), math.max(h, iconH)
+	local w = SafeNumber(fs:GetWidth()) or (fallbackH * 6)
+	local h = SafeNumber(fs:GetHeight()) or fallbackH
+	local iconW = icon and (SafeNumber(icon:GetWidth()) or fallbackH) or 0
+	local iconH = icon and (SafeNumber(icon:GetHeight()) or fallbackH) or 0
+	local gap = icon and (iconBorder and 5 or 3) or 0
+	return w + iconW + gap, math_max(h, iconH)
 end
 
-local function isOverlapping(alpha, bravo)
-	local aL, aR, aB, aT = ns.Compat.SafeNumber(alpha:GetLeft()), ns.Compat.SafeNumber(alpha:GetRight()), ns.Compat.SafeNumber(alpha:GetBottom()), ns.Compat.SafeNumber(alpha:GetTop())
-	local bL, bR, bB, bT = ns.Compat.SafeNumber(bravo:GetLeft()), ns.Compat.SafeNumber(bravo:GetRight()), ns.Compat.SafeNumber(bravo:GetBottom()), ns.Compat.SafeNumber(bravo:GetTop())
+local function isOverlapping(alpha, bravo, pad)
+	local aL, aR, aB, aT = SafeNumber(alpha:GetLeft()), SafeNumber(alpha:GetRight()), SafeNumber(alpha:GetBottom()), SafeNumber(alpha:GetTop())
+	local bL, bR, bB, bT = SafeNumber(bravo:GetLeft()), SafeNumber(bravo:GetRight()), SafeNumber(bravo:GetBottom()), SafeNumber(bravo:GetTop())
 	if not (aL and aR and aB and aT and bL and bR and bB and bT) then
 		return false
 	end
-	if aL <= bR and bL <= aR and aB <= bT and bB <= aT then
+	pad = pad or 0
+	if aL <= bR and bL <= aR and (aB - pad) <= bT and (bB - pad) <= aT then
 		return true
 	end
+	return false
 end
+
+local lastUpdateTime = 0
 
 function Display_Update()
 	local now = GetTime()
+	local dt = now - lastUpdateTime
+	if dt <= 0 or dt > 0.25 then
+		dt = 0.016
+	end
+	lastUpdateTime = now
+
+	local smooth = (db.smoothEasing ~= false)
+	local overlapPad = smooth and 2 or 0
+	local hasBorder = (db.iconBorder ~= false)
+
 	for scrollArea, u in next, wildFrames do
 		for animationStyle, t in next, u do
 			local t_len = #t
@@ -453,69 +1006,102 @@ function Display_Update()
 				if start + length <= now then
 					for j = i, t_len do
 						local f = t[j]
-						local cleanup = animationStyle.cleanup
-						if cleanup then
-							cleanup(f, scrollArea.xOffset, scrollArea.yOffset, scrollArea.size, scrollArea[f.sticky and "stickyDirection" or "direction"] or animationStyle.defaultDirection, f.id)
-						end
-						f:Hide()
 						t[j] = nil
-						freeFrames[f] = true
-						local fs = f.fs
-						fs:Hide()
-						fs:SetParent(ParrotFrame)
-						freeFontStrings[fs] = true
-						local icon = f.icon
-						f.icon = nil
-						if icon then
-							freeTextures[icon] = true
-							icon:Hide()
-							icon:SetTexture(nil)
-							icon:ClearAllPoints()
-							icon:SetParent(ParrotFrame)
-						end
+						releaseFrame(f, scrollArea, animationStyle)
 					end
 					break
 				end
+
 				local percent = (now - start) / length
-				if percent >= 0.8 then
-					local alpha = (1-percent) * 5
-					frame.fs:SetAlpha(alpha * db.alpha)
-					if frame.icon then
-						frame.icon:SetAlpha(alpha * db.iconAlpha)
-					end
+				if percent < 0 then
+					percent = 0
 				end
 
+				-- Alpha envelope (smooth fade-in + cosine fade-out vs classic linear tail)
+				local alphaFactor
+				if smooth then
+					alphaFactor = Easing.SmoothAlpha(percent, 0.055, 0.76)
+				else
+					alphaFactor = (percent >= 0.8) and ((1 - percent) * 5) or 1
+				end
+				frame.fs:SetAlpha(alphaFactor * db.alpha)
+				if frame.iconHolder then
+					frame.iconHolder:SetAlpha(alphaFactor * db.iconAlpha)
+				end
+
+				-- Update live Nameplate coordinates if still visible on screen
+				local effX = scrollArea.xOffset
+				local effY = scrollArea.yOffset
+				if frame.useNameplate then
+					local npX, npY = resolveNameplateOffset(frame.anchorMode, frame.targetGUID, scrollArea.nameplateXOffset, scrollArea.nameplateYOffset)
+					if npX and npY then
+						frame.plateX = npX
+						frame.plateY = npY
+					end
+					effX = frame.plateX + (frame.plateJitterX or 0)
+					effY = frame.plateY
+				end
+
+				local dir = scrollArea[frame.sticky and "stickyDirection" or "direction"] or animationStyle.defaultDirection
+				frame.zoomScale = nil
 				frame:ClearAllPoints()
-				animationStyle.func(frame, scrollArea.xOffset, scrollArea.yOffset, scrollArea.size, percent, scrollArea[frame.sticky and "stickyDirection" or "direction"] or animationStyle.defaultDirection, i, t_len, frame.id)
-				local fw, fh = getSafeFrameSize(frame.fs, frame.icon, frame.fontSize)
-				frame:SetWidth(fw)
-				frame:SetHeight(fh)
+				animationStyle.func(frame, effX, effY, scrollArea.size, percent, dir, i, t_len, frame.id)
+
+				-- Compute unified content scale (base dynamic scale * style zoom or default pop)
+				local baseScale = frame.baseScale or 1
+				local zoomScale = frame.zoomScale
+				if not zoomScale then
+					if smooth then
+						if frame.sticky then
+							zoomScale = Easing.CritPopScale(percent, frame.peakScale or 1.35, 0.20)
+						else
+							zoomScale = Easing.NormalPopScale(percent, 0.065)
+						end
+					else
+						zoomScale = 1
+					end
+				end
+				local totalScale = math_max(0.1, baseScale * zoomScale)
+				frame.content:SetScale(totalScale)
+
+				local fw, fh = getSafeFrameSize(frame.fs, frame.iconHolder, frame.fontSize, hasBorder)
+				frame.content:SetWidth(fw)
+				frame.content:SetHeight(fh)
+				frame:SetWidth(fw * totalScale)
+				frame:SetHeight(fh * totalScale)
 
 				if lastFrame then
 					for h = #lastFrame, 1, -1 do
-						if isOverlapping(lastFrame[h], frame) then
+						if isOverlapping(lastFrame[h], frame, overlapPad) then
 							local minimum = percent
 							local maximum = 1
-							local current = (percent + maximum) / 2
+							local current = (percent + maximum) * 0.5
 							while maximum - minimum > 0.01 do
-								animationStyle.func(frame, scrollArea.xOffset, scrollArea.yOffset, scrollArea.size, current, scrollArea[frame.sticky and "stickyDirection" or "direction"] or animationStyle.defaultDirection, i, t_len, frame.id)
-								fw, fh = getSafeFrameSize(frame.fs, frame.icon, frame.fontSize)
-								frame:SetWidth(fw)
-								frame:SetHeight(fh)
-								if isOverlapping(lastFrame[h], frame) then
+								animationStyle.func(frame, effX, effY, scrollArea.size, current, dir, i, t_len, frame.id)
+								fw, fh = getSafeFrameSize(frame.fs, frame.iconHolder, frame.fontSize, hasBorder)
+								frame:SetWidth(fw * totalScale)
+								frame:SetHeight(fh * totalScale)
+								if isOverlapping(lastFrame[h], frame, overlapPad) then
 									minimum = current
 								else
 									maximum = current
 								end
-								current = (maximum + minimum) / 2
+								current = (maximum + minimum) * 0.5
 							end
 							current = current + 0.01
-							frame.start = -current * length + now
-							animationStyle.func(frame, scrollArea.xOffset, scrollArea.yOffset, scrollArea.size, current, scrollArea[frame.sticky and "stickyDirection" or "direction"] or animationStyle.defaultDirection, i, t_len, frame.id)
-							fw, fh = getSafeFrameSize(frame.fs, frame.icon, frame.fontSize)
-							frame:SetWidth(fw)
-							frame:SetHeight(fh)
-							for j = i+1, t_len do
+							local targetStart = -current * length + now
+							if smooth and (now - start) > 0.03 then
+								local blend = math_min(1, dt * 24)
+								frame.start = frame.start + (targetStart - frame.start) * blend
+								current = (now - frame.start) / length
+							else
+								frame.start = targetStart
+							end
+							animationStyle.func(frame, effX, effY, scrollArea.size, current, dir, i, t_len, frame.id)
+							fw, fh = getSafeFrameSize(frame.fs, frame.iconHolder, frame.fontSize, hasBorder)
+							frame:SetWidth(fw * totalScale)
+							frame:SetHeight(fh * totalScale)
+							for j = i + 1, t_len do
 								local v = t[j]
 								if v.start > frame.start then
 									v.start = frame.start
@@ -523,7 +1109,7 @@ function Display_Update()
 							end
 						end
 					end
-					lastFrame[#lastFrame+1] = frame
+					lastFrame[#lastFrame + 1] = frame
 				end
 			end
 			if lastFrame then
@@ -550,21 +1136,22 @@ local function makeflasher()
 		Mixin(flasher, BackdropTemplateMixin)
 	end
 	flasher:SetFrameStrata("BACKGROUND")
-	flasher:SetBackdrop({bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",})
-	flasher:SetAllPoints( UIParent)
-	flasher:SetScript("OnShow", function (self)
+	flasher:SetBackdrop({ bgFile = "Interface\\Tooltips\\UI-Tooltip-Background" })
+	flasher:SetAllPoints(UIParent)
+	flasher:SetScript("OnShow", function(self)
 		self.elapsed = 0
 		self:SetAlpha(0)
 	end)
-	flasher:SetScript("OnUpdate", function (self, elapsed)
+	flasher:SetScript("OnUpdate", function(self, elapsed)
 		elapsed = self.elapsed + elapsed
-		if elapsed >= 1 then
+		if elapsed >= 0.85 then
 			self:Hide()
 			self:SetAlpha(0)
 			return
 		end
-		local alpha = 1 - math.abs(elapsed - 0.5)
-		self:SetAlpha(alpha * 0.7)
+		local t = elapsed / 0.85
+		local alpha = math.sin(t * math.pi)
+		self:SetAlpha(alpha * 0.55)
 		self.elapsed = elapsed
 	end)
 	flasher:Hide()

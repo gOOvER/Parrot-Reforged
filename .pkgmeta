@@ -34,10 +34,19 @@ externals:
   libs/AceConfig-3.0:
     url: https://github.com/WoWUIDev/Ace3
     path: AceConfig-3.0
+  libs/AceSerializer-3.0:
+    url: https://github.com/WoWUIDev/Ace3
+    path: AceSerializer-3.0
 
   # GitHub-hosted External Libraries
   libs/LibDataBroker-1.1:
     url: https://github.com/tekkub/libdatabroker-1-1
+  libs/LibCustomGlow-1.0:
+    url: https://github.com/Stanzilla/LibCustomGlow
+  libs/LibQTip-1.0:
+    url: https://github.com/Torhal/LibQTip-1.0
+  libs/LibDeflate:
+    url: https://github.com/SafeteeWoW/LibDeflate
 
   # WowAce-hosted External Libraries (no official GitHub upstream)
   libs/LibDBIcon-1.0:
@@ -48,6 +57,8 @@ externals:
     url: https://repos.wowace.com/wow/ace-gui-3-0-shared-media-widgets/trunk/AceGUI-3.0-SharedMediaWidgets
   libs/LibSink-2.0:
     url: https://repos.wowace.com/wow/libsink-2-0/trunk/LibSink-2.0
+  libs/LibWindow-1.1:
+    url: https://repos.wowace.com/wow/libwindow-1-1/trunk/LibWindow-1.1
 
 manual-changelog: CHANGELOG.md
 
@@ -57,6 +68,15 @@ ignore:
   - .gitattributes
   - .luacheckrc
   - .pkgmeta
+  - assets
   - README.md
   - CHANGELOG.md
-  - LICENSE
+  - libs/LibQTip-1.0/LibQTip-1.0.toc
+  - libs/LibQTip-1.0/LibStub
+  - libs/LibDeflate/LibDeflate.toc
+  - libs/LibDeflate/docs
+  - libs/LibDeflate/dev_docs
+  - libs/LibDeflate/examples
+  - libs/LibDeflate/rockspecs
+  - libs/LibDeflate/tests
+  - libs/LibDeflate/tools

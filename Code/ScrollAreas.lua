@@ -53,34 +53,39 @@ local updateFuncs = {
 
 		local defaultScrollAreas = {
 			["Notification"] = {
-				animationStyle = "Straight",
+				animationStyle = "PopUp",
 				direction = "UP;CENTER",
-				stickyAnimationStyle = "Pow",
+				stickyAnimationStyle = "Impact",
 				stickyDirection = "UP;CENTER",
-				size = 150,
+				size = 160,
 				xOffset = 0,
 				yOffset = 175,
 				iconSide = "LEFT",
+				anchorMode = "SCREEN",
 			},
 			["Incoming"] = {
-				animationStyle = "Parabola",
+				animationStyle = "Cascade",
 				direction = "DOWN;LEFT",
-				stickyAnimationStyle = "Pow",
+				stickyAnimationStyle = "Impact",
 				stickyDirection = "DOWN;RIGHT",
 				size = 260,
-				xOffset = -60,
+				xOffset = -110,
 				yOffset = -30,
 				iconSide = "RIGHT",
+				anchorMode = "SCREEN",
 			},
 			["Outgoing"] = {
-				animationStyle = "Parabola",
-				direction = "DOWN;RIGHT",
-				stickyAnimationStyle = "Pow",
-				stickyDirection = "DOWN;LEFT",
+				animationStyle = "Fountain",
+				direction = "UP;RIGHT",
+				stickyAnimationStyle = "Impact",
+				stickyDirection = "UP;LEFT",
 				size = 260,
-				xOffset = 60,
-				yOffset = -30,
+				xOffset = 110,
+				yOffset = -20,
 				iconSide = "LEFT",
+				anchorMode = "SCREEN",
+				nameplateXOffset = 0,
+				nameplateYOffset = 24,
 			},
 		}
 		merge(db.areas, defaultScrollAreas)
@@ -157,10 +162,75 @@ local function hideAllOffsetBoxes()
 	if not offsetBoxes then
 		return
 	end
-	for k,v in next, offsetBoxes do
+	for k, v in next, offsetBoxes do
 		v:Hide()
 	end
 	module:CancelTimer(configModeTimer)
+end
+
+local function updateOffsetBoxLabel(offsetBox, k)
+	local area = scrollAreas and scrollAreas[k]
+	if not area or not offsetBox then return end
+	local x = math.floor((area.xOffset or 0) + 0.5)
+	local y = math.floor((area.yOffset or 0) + 0.5)
+	local localizedArea = choices[k] or k
+	local styleTag = area.animationStyle or "Straight"
+	offsetBox.topText:SetText("|cffffd100" .. localizedArea .. "|r  |cff9999a8(" .. styleTag .. ")|r")
+	offsetBox.bottomText:SetText(L["Position: %d, %d"]:format(x, y))
+end
+
+local function nudgeScrollArea(k, dx, dy)
+	local area = scrollAreas and scrollAreas[k]
+	if not area then return end
+	area.xOffset = math.floor((area.xOffset or 0) + dx + 0.5)
+	area.yOffset = math.floor((area.yOffset or 0) + dy + 0.5)
+	local box = offsetBoxes and offsetBoxes[k]
+	if box and box.midPoint then
+		box.midPoint:ClearAllPoints()
+		box.midPoint:SetPoint("CENTER", UIParent, "CENTER", area.xOffset, area.yOffset)
+		updateOffsetBoxLabel(box, k)
+	end
+	local AceConfigRegistry = LibStub("AceConfigRegistry-3.0", true)
+	if AceConfigRegistry then
+		AceConfigRegistry:NotifyChange("Parrot")
+	end
+end
+
+local function createNudgeButton(parent, label, dx, dy, anchorPoint, relTo, relPoint, offX, offY)
+	local btn = CreateFrame("Button", nil, parent, BackdropTemplateMixin and "BackdropTemplate" or nil)
+	btn:SetSize(20, 18)
+	btn:SetPoint(anchorPoint, relTo, relPoint, offX, offY)
+	if ns.UIStyle then
+		ns.UIStyle.ApplyBox(btn, { 0.14, 0.14, 0.18, 0.95 }, { 0.55, 0.44, 0.16, 0.90 })
+	end
+	local fs = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	fs:SetPoint("CENTER", 0, 0)
+	fs:SetTextColor(1, 0.85, 0.25)
+	fs:SetText(label)
+	btn:SetScript("OnEnter", function(self)
+		if ns.UIStyle then
+			ns.UIStyle.ApplyBox(self, { 0.25, 0.20, 0.08, 0.98 }, { 1.0, 0.82, 0.0, 1.0 })
+		end
+		if GameTooltip then
+			GameTooltip:SetOwner(self, "ANCHOR_TOP")
+			GameTooltip:AddLine(L["Precision Nudge"], 1, 0.82, 0)
+			GameTooltip:AddLine(L["Click: 1 px  |  Shift+Click: 10 px"], 0.9, 0.9, 0.9)
+			GameTooltip:Show()
+		end
+	end)
+	btn:SetScript("OnLeave", function(self)
+		if ns.UIStyle then
+			ns.UIStyle.ApplyBox(self, { 0.14, 0.14, 0.18, 0.95 }, { 0.55, 0.44, 0.16, 0.90 })
+		end
+		if GameTooltip then
+			GameTooltip:Hide()
+		end
+	end)
+	btn:SetScript("OnClick", function()
+		local step = IsShiftKeyDown() and 10 or 1
+		nudgeScrollArea(parent.areaKey, dx * step, dy * step)
+	end)
+	return btn
 end
 
 local function showOffsetBox(k)
@@ -170,59 +240,101 @@ local function showOffsetBox(k)
 	local offsetBox = offsetBoxes[k]
 	if not offsetBox then
 		offsetBox = CreateFrame("Button", "ParrotScrollAreasOffsetBox" .. k, UIParent, BackdropTemplateMixin and "BackdropTemplate" or nil)
+		offsetBox.areaKey = k
 		local midPoint = CreateFrame("Frame", "$parentMidPoint", offsetBox)
 		offsetBox.midPoint = midPoint
 		midPoint:SetWidth(1)
 		midPoint:SetHeight(1)
 		offsetBoxes[k] = offsetBox
 		offsetBox:SetPoint("CENTER", midPoint, "CENTER")
-		offsetBox:SetWidth(300)
-		offsetBox:SetHeight(100)
-		offsetBox:SetFrameStrata("BACKGROUND")
+		offsetBox:SetWidth(290)
+		offsetBox:SetHeight(106)
+		offsetBox:SetFrameStrata("DIALOG")
+		offsetBox:RegisterForClicks("RightButtonUp")
 
-		local bg = offsetBox:CreateTexture("$parentBackground", "BACKGROUND")
-		bg:SetColorTexture(0.7, 0.4, 0, 0.5) -- orange
-		bg:SetAllPoints(offsetBox)
-		offsetBox.bg = bg
-
-		local text = offsetBox:CreateFontString("$parentText", "ARTWORK", "GameFontHighlight")
-		offsetBox.text = text
-		text:SetText(L["Click and drag to the position you want."])
-		text:SetPoint("CENTER")
-		local topText = offsetBox:CreateFontString("$parentTopText", "ARTWORK", "GameFontHighlight")
-		offsetBox.topText = topText
-		topText:SetText(L["Scroll area: %s"]:format(k))
-		topText:SetPoint("BOTTOM", offsetBox, "TOP", 0, 5)
-		local bottomText = offsetBox:CreateFontString("$parentBottomText", "ARTWORK", "GameFontHighlight")
-		offsetBox.bottomText = bottomText
-		bottomText:SetPoint("TOP", offsetBox, "BOTTOM", 0, -5)
-
-		if _G.ElvUI and offsetBox.SetTemplate then
-			bg:Hide()
-			offsetBox:SetTemplate("Transparent")
-			offsetBox:SetBackdropBorderColor(1, 0.82, 0, 0.9)
+		if ns.UIStyle and offsetBox.SetBackdrop then
+			ns.UIStyle.ApplyBox(offsetBox, { 0.06, 0.06, 0.09, 0.84 }, { 0.88, 0.70, 0.18, 0.95 })
+		else
+			local bg = offsetBox:CreateTexture("$parentBackground", "BACKGROUND")
+			bg:SetColorTexture(0.08, 0.08, 0.11, 0.84)
+			bg:SetAllPoints(offsetBox)
+			offsetBox.bg = bg
 		end
 
+		if _G.ElvUI and offsetBox.SetTemplate then
+			offsetBox:SetTemplate("Transparent")
+			offsetBox:SetBackdropBorderColor(1, 0.82, 0, 0.92)
+		end
+
+		-- Subtle center crosshair guides for pixel-accurate alignment
+		local hLine = offsetBox:CreateTexture(nil, "BORDER")
+		hLine:SetHeight(1)
+		hLine:SetPoint("LEFT", offsetBox, "LEFT", 8, 0)
+		hLine:SetPoint("RIGHT", offsetBox, "RIGHT", -8, 0)
+		hLine:SetColorTexture(1.0, 0.82, 0.0, 0.22)
+
+		local vLine = offsetBox:CreateTexture(nil, "BORDER")
+		vLine:SetWidth(1)
+		vLine:SetPoint("TOP", offsetBox, "TOP", 0, -22)
+		vLine:SetPoint("BOTTOM", offsetBox, "BOTTOM", 0, 22)
+		vLine:SetColorTexture(1.0, 0.82, 0.0, 0.22)
+
+		local centerDot = offsetBox:CreateTexture(nil, "ARTWORK")
+		centerDot:SetSize(5, 5)
+		centerDot:SetPoint("CENTER", 0, 0)
+		centerDot:SetColorTexture(1.0, 0.82, 0.0, 0.85)
+
+		local topText = offsetBox:CreateFontString("$parentTopText", "OVERLAY", "GameFontNormal")
+		offsetBox.topText = topText
+		topText:SetPoint("TOP", offsetBox, "TOP", 0, -7)
+
+		local text = offsetBox:CreateFontString("$parentText", "OVERLAY", "GameFontHighlightSmall")
+		offsetBox.text = text
+		text:SetTextColor(0.82, 0.82, 0.88)
+		text:SetText(L["Drag to move  •  Right-click to lock"])
+		text:SetPoint("CENTER", 0, 4)
+
+		local bottomText = offsetBox:CreateFontString("$parentBottomText", "OVERLAY", "GameFontHighlightSmall")
+		offsetBox.bottomText = bottomText
+		bottomText:SetTextColor(1.0, 0.85, 0.35)
+		bottomText:SetPoint("BOTTOM", offsetBox, "BOTTOM", -26, 7)
+
+		-- 4 directional 1px / 10px nudge buttons in bottom-right cluster
+		local btnRight = createNudgeButton(offsetBox, "►",  1,  0, "BOTTOMRIGHT", offsetBox, "BOTTOMRIGHT", -6, 5)
+		local btnDown  = createNudgeButton(offsetBox, "▼",  0, -1, "RIGHT", btnRight, "LEFT", -2, 0)
+		local btnUp    = createNudgeButton(offsetBox, "▲",  0,  1, "RIGHT", btnDown,  "LEFT", -2, 0)
+		createNudgeButton(offsetBox, "◄", -1,  0, "RIGHT", btnUp,    "LEFT", -2, 0)
+
+		offsetBox:SetScript("OnClick", function(_, button)
+			if button == "RightButton" then
+				setConfigMode(false)
+			end
+		end)
+
 		offsetBox:SetScript("OnDragStart", function(this)
-				midPoint:StartMoving()
-				this.moving = true
+			midPoint:StartMoving()
+			this.moving = true
 		end)
 
 		offsetBox:SetScript("OnDragStop", function(this)
-				this:GetScript("OnUpdate")(this)
-				this.moving = nil
-				midPoint:StopMovingOrSizing()
+			this:GetScript("OnUpdate")(this)
+			this.moving = nil
+			midPoint:StopMovingOrSizing()
+			local AceConfigRegistry = LibStub("AceConfigRegistry-3.0", true)
+			if AceConfigRegistry then
+				AceConfigRegistry:NotifyChange("Parrot")
+			end
 		end)
 
 		offsetBox:SetScript("OnUpdate", function(this)
-				if this.moving then
-					local x, y = this:GetCenter()
-					x = x - GetScreenWidth()/2
-					y = y - GetScreenHeight()/2
-					scrollAreas[k].xOffset = x
-					scrollAreas[k].yOffset = y
-					this.bottomText:SetText(L["Position: %d, %d"]:format(x, y))
-				end
+			if this.moving then
+				local x, y = this:GetCenter()
+				x = math.floor((x - GetScreenWidth() / 2) + 0.5)
+				y = math.floor((y - GetScreenHeight() / 2) + 0.5)
+				scrollAreas[k].xOffset = x
+				scrollAreas[k].yOffset = y
+				updateOffsetBoxLabel(this, k)
+			end
 		end)
 
 		offsetBox:SetMovable(true)
@@ -236,41 +348,64 @@ local function showOffsetBox(k)
 
 	offsetBox:Show()
 
-	local offsetX, offsetY = scrollAreas[k].xOffset, scrollAreas[k].yOffset
+	local offsetX, offsetY = scrollAreas[k].xOffset or 0, scrollAreas[k].yOffset or 0
 	offsetBox.midPoint:ClearAllPoints()
 	offsetBox.midPoint:SetPoint("CENTER", UIParent, "CENTER", offsetX, offsetY)
-	offsetBox.bottomText:SetText(L["Position: %d, %d"]:format(offsetX, offsetY))
+	updateOffsetBoxLabel(offsetBox, k)
 end
 
-local alphabet = {
-	"Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf",
-	"Hotel", "India", "Juliet", "Kilo", "Mike", "November", "Oscar",
-	"Papa", "Quebec", "Romeo", "Sierra", "Tango", "Uniform", "Victor",
-	"Whiskey", "X-ray", "Yankee", "Zulu",
+local DEMO_SAMPLES = {
+	Outgoing = {
+		normal = {
+			{ amount = 14820, suffix = "",      r = 1.00, g = 0.50, b = 0.12, spell = 133,   fallback = "Interface\\Icons\\Spell_Fire_FlameBolt" },
+			{ amount = 9240,  suffix = " (x3)", r = 0.68, g = 0.42, b = 1.00, spell = 589,   fallback = "Interface\\Icons\\Spell_Shadow_ShadowWordPain" },
+			{ amount = 21350, suffix = "",      r = 0.35, g = 0.78, b = 1.00, spell = 116,   fallback = "Interface\\Icons\\Spell_Frost_FrostBolt02" },
+		},
+		sticky = {
+			{ amount = 74900, suffix = "!",     r = 1.00, g = 0.84, b = 0.18, spell = 11366, fallback = "Interface\\Icons\\Spell_Fire_Fireball02" },
+			{ amount = 61200, suffix = "!",     r = 1.00, g = 0.92, b = 0.45, spell = 23922, fallback = "Interface\\Icons\\INV_Shield_05" },
+		},
+	},
+	Incoming = {
+		normal = {
+			{ textPrefix = "-", amount = 8450,  suffix = "",      r = 0.95, g = 0.25, b = 0.25, spell = 6603, fallback = "Interface\\Icons\\Ability_MeleeDamage" },
+			{ textPrefix = "+", amount = 15600, suffix = "",      r = 0.22, g = 0.95, b = 0.38, spell = 774,  fallback = "Interface\\Icons\\Spell_Nature_Rejuvenation" },
+		},
+		sticky = {
+			{ textPrefix = "+", amount = 52400, suffix = "!",     r = 0.35, g = 1.00, b = 0.48, spell = 2061, fallback = "Interface\\Icons\\Spell_Holy_FlashHeal" },
+		},
+	},
+	Notification = {
+		normal = {
+			{ rawText = "+450 " .. (_G.COMBAT_TEXT_HONOR or "Honor"), r = 0.95, g = 0.78, b = 0.25, fallback = "Interface\\Icons\\Achievement_PVP_O_01" },
+		},
+		sticky = {
+			{ rawText = "[Hot Streak!]", r = 1.00, g = 0.82, b = 0.15, spell = 11366, fallback = "Interface\\Icons\\Spell_Fire_Fireball02" },
+		},
+	},
 }
-local currentAlphabet = 1
-local currentColor = 0
+
+local sampleCursor = 0
 local function test(kind, k)
-	local h = currentColor / 60
-	local i = math.floor(h)
-	local f = h - i
-	local r, g, b
-	if i == 0 then
-		r, g, b = 1, f, 0
-	elseif i == 1 then
-		r, g, b = 1-f, 1, 0
-	elseif i == 2 then
-		r, g, b = 0, 1, f
-	elseif i == 3 then
-		r, g, b = 0, 1-f, 1
-	elseif i == 4 then
-		r, g, b = f, 0, 1
-	else -- 5
-		r, g, b = 1, 0, 1-f
+	sampleCursor = sampleCursor + 1
+	local bucket = DEMO_SAMPLES[k] or DEMO_SAMPLES.Outgoing
+	local list = (kind == "sticky") and bucket.sticky or bucket.normal
+	local entry = list[((sampleCursor - 1) % #list) + 1]
+	local isSticky = (kind == "sticky")
+	local icon = (entry.spell and ns.Compat.GetSpellTexture(entry.spell)) or entry.fallback
+	local msgText
+	if entry.rawText then
+		msgText = entry.rawText
+	else
+		msgText = (entry.textPrefix or "") .. Parrot:ShortenAmount(entry.amount) .. (entry.suffix or "")
 	end
-	Parrot:ShowMessage(alphabet[currentAlphabet], k, kind == "sticky", r, g, b, nil, nil, nil, "Interface\\Icons\\INV_Misc_QuestionMark")
-	currentAlphabet = (currentAlphabet % #alphabet) + 1
-	currentColor = (currentColor + 10) % 360
+	Parrot:ShowMessage(msgText, k, isSticky, entry.r, entry.g, entry.b, nil, nil, nil, icon, {
+		isCrit = isSticky,
+		amount = entry.amount,
+		schoolR = entry.r,
+		schoolG = entry.g,
+		schoolB = entry.b,
+	})
 end
 
 local configModeMessages
@@ -290,9 +425,16 @@ do
 end
 
 local configMode = false
+module.configMode = false
+
+function Parrot:GetConfigMode()
+	return configMode
+end
+
 function setConfigMode(value)
-	configMode = value
-	if not value then
+	configMode = not not value
+	module.configMode = configMode
+	if not configMode then
 		hideAllOffsetBoxes()
 	else
 		for k in next, scrollAreas do
@@ -300,6 +442,9 @@ function setConfigMode(value)
 		end
 		configModeTimer = module:ScheduleRepeatingTimer(configModeMessages, 1)
 		configModeMessages()
+	end
+	if ns.ConfigWindow and ns.ConfigWindow.RefreshFooter then
+		ns.ConfigWindow:RefreshFooter()
 	end
 end
 
@@ -331,6 +476,32 @@ function module:GetScrollAreasChoices()
 	return choices
 end
 Parrot.GetScrollAreasChoices = module.GetScrollAreasChoices
+
+function module:ApplyModernScrollPreset()
+	if not scrollAreas then return end
+	if scrollAreas["Outgoing"] then
+		scrollAreas["Outgoing"].animationStyle = "Fountain"
+		scrollAreas["Outgoing"].direction = "UP;RIGHT"
+		scrollAreas["Outgoing"].stickyAnimationStyle = "Impact"
+		scrollAreas["Outgoing"].stickyDirection = "UP;LEFT"
+	end
+	if scrollAreas["Incoming"] then
+		scrollAreas["Incoming"].animationStyle = "Cascade"
+		scrollAreas["Incoming"].direction = "DOWN;LEFT"
+		scrollAreas["Incoming"].stickyAnimationStyle = "Impact"
+		scrollAreas["Incoming"].stickyDirection = "DOWN;RIGHT"
+	end
+	if scrollAreas["Notification"] then
+		scrollAreas["Notification"].animationStyle = "PopUp"
+		scrollAreas["Notification"].direction = "UP;CENTER"
+		scrollAreas["Notification"].stickyAnimationStyle = "Impact"
+		scrollAreas["Notification"].stickyDirection = "UP;CENTER"
+	end
+	if Parrot.options.args.scrollAreas then
+		Parrot.options.args.scrollAreas = nil
+		self:OnOptionsCreate()
+	end
+end
 
 function module:OnOptionsCreate()
 	local scrollAreas_opt
@@ -371,6 +542,9 @@ function module:OnOptionsCreate()
 		opt.args.speed.args.normal.arg[2] = new
 		opt.args.speed.args.sticky.arg[2] = new
 		opt.args.icon.arg = new
+		opt.args.anchor.args.anchorMode.arg = new
+		opt.args.anchor.args.nameplateXOffset.arg = new
+		opt.args.anchor.args.nameplateYOffset.arg = new
 		opt.args.positionX.arg = new
 		opt.args.positionY.arg = new
 		opt.args.font.args.fontface.arg[2] = new
@@ -628,6 +802,50 @@ function module:OnOptionsCreate()
 		end
 	end
 
+	local anchorModeChoices = {
+		SCREEN = L["Screen position"],
+		NAMEPLATE = L["Unit nameplate (fallback: Screen)"],
+		TARGET = L["Target nameplate (fallback: Screen)"],
+	}
+	local function getAnchorMode(info)
+		local value = scrollAreas[info.arg].anchorMode
+		return anchorModeChoices[value] and value or "SCREEN"
+	end
+	local function setAnchorMode(info, value)
+		local k = info.arg
+		scrollAreas[k].anchorMode = value
+		if not configMode then
+			test("normal", k)
+			test("sticky", k)
+		end
+	end
+	local function isNameplateDisabled(info)
+		local mode = scrollAreas[info.arg].anchorMode
+		return not mode or mode == "SCREEN"
+	end
+	local function getNameplateXOffset(info)
+		return scrollAreas[info.arg].nameplateXOffset or 0
+	end
+	local function setNameplateXOffset(info, value)
+		local k = info.arg
+		scrollAreas[k].nameplateXOffset = value
+		if not configMode then
+			test("normal", k)
+		end
+	end
+	local function getNameplateYOffset(info)
+		local val = scrollAreas[info.arg].nameplateYOffset
+		if val == nil then return 24 end
+		return val
+	end
+	local function setNameplateYOffset(info, value)
+		local k = info.arg
+		scrollAreas[k].nameplateYOffset = value
+		if not configMode then
+			test("normal", k)
+		end
+	end
+
 	local function makeOption(k)
 		local v = scrollAreas[k]
 		local opt = {
@@ -664,6 +882,52 @@ function module:OnOptionsCreate()
 					set = setIconSide,
 					values = iconSideChoices,
 					arg = k,
+				},
+				anchor = {
+					type = 'group',
+					inline = true,
+					name = L["Nameplate & screen anchor"],
+					args = {
+						anchorMode = {
+							type = 'select',
+							name = L["Anchor target"],
+							desc = L["Attach scrolling messages to enemy/friendly nameplates when visible, falling back to screen coordinates."],
+							get = getAnchorMode,
+							set = setAnchorMode,
+							values = anchorModeChoices,
+							width = "double",
+							arg = k,
+							order = 1,
+						},
+						nameplateXOffset = {
+							type = 'range',
+							name = L["Nameplate X offset"],
+							desc = L["Horizontal pixel offset relative to the nameplate center."],
+							get = getNameplateXOffset,
+							set = setNameplateXOffset,
+							disabled = isNameplateDisabled,
+							min = -150,
+							max = 150,
+							step = 1,
+							bigStep = 5,
+							arg = k,
+							order = 2,
+						},
+						nameplateYOffset = {
+							type = 'range',
+							name = L["Nameplate Y offset"],
+							desc = L["Vertical pixel offset relative to the nameplate center."],
+							get = getNameplateYOffset,
+							set = setNameplateYOffset,
+							disabled = isNameplateDisabled,
+							min = -100,
+							max = 150,
+							step = 1,
+							bigStep = 5,
+							arg = k,
+							order = 3,
+						},
+					},
 				},
 				test = {
 					type = 'group',
@@ -836,8 +1100,8 @@ function module:OnOptionsCreate()
 						fontSize = {
 							type = 'range',
 							name = L["Normal font size"],
-							min = 12,
-							max = 30,
+							min = 8,
+							max = 48,
 							step = 1,
 							get = getFontSize,
 							set = setFontSize,
@@ -889,8 +1153,8 @@ function module:OnOptionsCreate()
 						stickyfontSize = {
 							type = 'range',
 							name = L["Sticky font size"],
-							min = 12,
-							max = 30,
+							min = 8,
+							max = 48,
 							step = 1,
 							get = getFontSize,
 							set = setFontSize,
@@ -952,13 +1216,14 @@ function module:OnOptionsCreate()
 						setConfigMode(false)
 					end
 					scrollAreas[L["New scroll area"]] = {
-						animationStyle = "Straight",
-						direction = Parrot_AnimationStyles:GetAnimationStyleDefaultDirection("Straight"),
-						stickyAnimationStyle = "Pow",
-						stickyDirection = Parrot_AnimationStyles:GetAnimationStyleDefaultDirection("Pow"),
-						size = 150,
+						animationStyle = "Fountain",
+						direction = Parrot_AnimationStyles:GetAnimationStyleDefaultDirection("Fountain"),
+						stickyAnimationStyle = "Impact",
+						stickyDirection = Parrot_AnimationStyles:GetAnimationStyleDefaultDirection("Impact"),
+						size = 180,
 						xOffset = 0,
 						yOffset = 0,
+						anchorMode = "SCREEN",
 					}
 					rebuildChoices()
 					makeOption(L["New scroll area"])

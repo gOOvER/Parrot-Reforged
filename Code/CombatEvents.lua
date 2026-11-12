@@ -30,7 +30,11 @@ local defaults = {
 		throttles = {},
 		sthrottles = {},
 		useShortThrottleText = true,
+		modernThrottleBadge = true,
 		hideThrottleText = false,
+		smartAoEThrottle = true,
+		minDamagePercentHP = 0,
+		minHealPercentHP = 0,
 		onlyShowCrits = false,
 		abbreviateStyle = "abbreviate",
 		abbreviateLength = 30,
@@ -40,36 +44,37 @@ local defaults = {
 		hideFullOverheals = 1,
 		hideSkillNames = false,
 		hideUnitNames = false,
-		shortenAmount = false,
-		breakUpAmount = false,
+		shortenAmount = true,
+		shortenThreshold = 10000,
+		breakUpAmount = true,
 		classcolor = true,
 		totemDamage = true,
 		hideRealm = true,
 		damageTypes = {
 			color = true,
-			["Physical"] = "ffffff",
-			["Holy"] = "ffe67f",
-			["Fire"] = "ff7f00",
-			["Nature"] = "4dff4d",
-			["Stormstrike"] = "a6ffa6",
-			["Frost"] = "7fffff",
-			["Frostfire"] = "cc4d7f",
-			["Froststorm"] = "66ffa6",
-			["Shadow"] = "7f7fff",
-			["Shadowstrike"] = "bfbfff",
-			["Twilight"] = "bfb3bf", -- Shadowholy
-			["Shadowflame"] = "cc7f99",
-			["Plague"] = "bf7fff", -- Shadowstorm
-			["Shadowfrost"] = "7fbfff",
-			["Arcane"] = "ff7fff",
-			["Spellstrike"] = "ffbfbb",
-			["Spellfire"] = "ff7f7f",
-			["Astral"] = "99cc99", -- Spellstorm
-			["Spellfrost"] = "ccccff",
-			["Spellshadow"] = "cc66ff",
-			["Elemental"] = "ffff00",
-			["Magic"] = "ff00ff",
-			["Chaos"] = "008800",
+			["Physical"] = "f5f5f5",
+			["Holy"] = "ffe680",
+			["Fire"] = "ff8020",
+			["Nature"] = "55ff55",
+			["Stormstrike"] = "99ffaa",
+			["Frost"] = "5ce1ff",
+			["Frostfire"] = "ff66b2",
+			["Froststorm"] = "66ffd9",
+			["Shadow"] = "9973ff",
+			["Shadowstrike"] = "b8a6ff",
+			["Twilight"] = "e6b3ff", -- Shadowholy
+			["Shadowflame"] = "e066ff",
+			["Plague"] = "a6eb66", -- Shadowstorm
+			["Shadowfrost"] = "80bfff",
+			["Arcane"] = "ff80ff",
+			["Spellstrike"] = "ffb3cc",
+			["Spellfire"] = "ff7399",
+			["Astral"] = "66f0ff", -- Spellstorm
+			["Spellfrost"] = "b3d9ff",
+			["Spellshadow"] = "cc73ff",
+			["Elemental"] = "ffdf4d",
+			["Magic"] = "eb66ff",
+			["Chaos"] = "40ff80",
 		},
 		modifier = {
 			color = true,
@@ -157,6 +162,23 @@ local updateDBFuncs = {
 		end
 		db.disable_in_10man = nil
 		db.disable_in_25man = nil
+	end,
+	[6] = function()
+		if not db.shortenAmount and not db.breakUpAmount then
+			db.shortenAmount = true
+			db.breakUpAmount = true
+			db.shortenThreshold = 10000
+		end
+		if db.modernThrottleBadge == nil then
+			db.modernThrottleBadge = true
+		end
+		if db.damageTypes and db.damageTypes["Chaos"] == "008800" then
+			for k, hex in pairs(defaults.profile.damageTypes) do
+				if k ~= "color" then
+					db.damageTypes[k] = hex
+				end
+			end
+		end
 	end,
 }
 
@@ -466,15 +488,26 @@ function module:OnOptionsCreate()
 						type = 'toggle',
 						name = L["Shorten amounts"],
 						desc = L["Abbreviate number values displayed (26500 -> 26.5k)"],
-						disabled = function() return db.breakUpAmount end,
 						order = 7,
+					},
+					shortenThreshold = {
+						type = 'select',
+						name = L["Shorten threshold"],
+						desc = L["Minimum value above which numbers are abbreviated (smaller numbers use thousands separators if enabled)."],
+						disabled = function() return not db.shortenAmount end,
+						values = {
+							[1000] = "1,000+ (1.2k)",
+							[10000] = "10,000+ (12.5k)",
+							[100000] = "100,000+ (125k)",
+							[1000000] = "1,000,000+ (1.25M)",
+						},
+						order = 8,
 					},
 					breakUpAmount = {
 						type = 'toggle',
 						name = L["Break up amounts"],
 						desc = L["Break up number values with '%s' (26500 -> %s)"]:format(LARGE_NUMBER_SEPERATOR or ",", BreakUpLargeNumbers and BreakUpLargeNumbers(26500) or "26,500"),
-						disabled = function() return db.shortenAmount end,
-						order = 8,
+						order = 9,
 					}
 				},
 			},
@@ -565,11 +598,18 @@ function module:OnOptionsCreate()
 						desc = L["Use short throttle-texts (like \"2++\" instead of \"2 crits\")"],
 						order = 1,
 					},
+					modernThrottleBadge = {
+						type = 'toggle',
+						name = L["Modern hit badges"],
+						desc = L["Display compact multi-hit counters (e.g. x5, x3!) instead of legacy (3x, 2++) suffixes."],
+						disabled = function() return not db.useShortThrottleText or db.hideThrottleText end,
+						order = 2,
+					},
 					hideThrottleText = {
 						type = 'toggle',
 						name = L["Hide throttle text"] or "Hide throttle text",
 						desc = L["Hide the throttle hit/heal count suffix"] or "Hide the throttle hit/heal count suffix",
-						order = 2,
+						order = 3,
 					},
 				},
 				hidden = function()
@@ -1239,6 +1279,46 @@ function module:OnOptionsCreate()
 		end
 		db.filters[filterType] = value
 	end
+	events_opt.args.filters.args.smartSpam = {
+		type = "group",
+		inline = true,
+		name = L["Smart Raid & AoE Anti-Spam"],
+		order = 0,
+		args = {
+			smartAoEThrottle = {
+				type = "toggle",
+				name = L["Dynamic AoE Throttle"],
+				desc = L["Automatically widen merge windows during intense multi-target AoE or raid bursts (>12 hits/sec) to prevent screen clutter."],
+				width = "full",
+				order = 1,
+				get = function() return db.smartAoEThrottle ~= false end,
+				set = function(_, val) db.smartAoEThrottle = val end,
+			},
+			minDamagePercentHP = {
+				type = "range",
+				name = L["Min Damage (% Max HP)"],
+				desc = L["Hide non-critical damage hits smaller than this percentage of your maximum health (0 = disabled). Scales automatically with gear!"],
+				min = 0,
+				max = 5,
+				step = 0.1,
+				order = 2,
+				get = function() return tonumber(db.minDamagePercentHP) or 0 end,
+				set = function(_, val) db.minDamagePercentHP = val end,
+			},
+			minHealPercentHP = {
+				type = "range",
+				name = L["Min Healing (% Max HP)"],
+				desc = L["Hide non-critical heals smaller than this percentage of your maximum health (0 = disabled)."],
+				min = 0,
+				max = 5,
+				step = 0.1,
+				order = 3,
+				get = function() return tonumber(db.minHealPercentHP) or 0 end,
+				set = function(_, val) db.minHealPercentHP = val end,
+			},
+		},
+	}
+
 	function createFilterOption(filterType)
 		local localName = filterTypes[filterType]
 		events_opt.args.filters.args[filterType] = {
@@ -1249,6 +1329,7 @@ function module:OnOptionsCreate()
 			max = 10000000,
 			step = 1,
 			bigStep = 1000,
+			order = 10,
 			get = getAmount,
 			set = setAmount,
 			arg = filterType
@@ -1759,13 +1840,17 @@ local function round(num, idp)
 end
 
 local function shortenAmount(val)
-	if(val >= 1e7) then
-		return ("%sm"):format(round(val / 1e6))
-	elseif(val >= 1e6) then
-		return ("%sm"):format(round(val / 1e6, 2))
-	elseif(val >= 1e5) then
+	if val >= 1e10 then
+		return ("%sB"):format(round(val / 1e9))
+	elseif val >= 1e9 then
+		return ("%sB"):format(round(val / 1e9, 2))
+	elseif val >= 1e7 then
+		return ("%sM"):format(round(val / 1e6, 1))
+	elseif val >= 1e6 then
+		return ("%sM"):format(round(val / 1e6, 2))
+	elseif val >= 1e5 then
 		return ("%sk"):format(round(val / 1e3))
-	elseif(val >= 1e4) then
+	elseif val >= 1e3 then
 		return ("%sk"):format(round(val / 1e3, 1))
 	else
 		return val
@@ -1776,7 +1861,8 @@ function module:ShortenAmount(val)
 	if not val or ns.Compat.IsSecretValue(val) or type(val) ~= "number" then
 		return val
 	end
-	if db.shortenAmount then
+	local threshold = db.shortenThreshold or 10000
+	if db.shortenAmount and val >= threshold then
 		return shortenAmount(val)
 	elseif db.breakUpAmount and BreakUpLargeNumbers then
 		return BreakUpLargeNumbers(val)
@@ -1784,6 +1870,20 @@ function module:ShortenAmount(val)
 	return val
 end
 Parrot.ShortenAmount = module.ShortenAmount
+
+function module:ApplyModernEventPreset()
+	db.shortenAmount = true
+	db.shortenThreshold = 10000
+	db.breakUpAmount = true
+	db.useShortThrottleText = true
+	db.modernThrottleBadge = true
+	db.damageTypes.color = true
+	for k, hex in pairs(defaults.profile.damageTypes) do
+		if k ~= "color" then
+			db.damageTypes[k] = hex
+		end
+	end
+end
 
 
 local modifierTranslations = {}
@@ -1842,6 +1942,33 @@ local LAST_TIME = _G.newproxy() -- cheaper than {}
 local NEXT_TIME = _G.newproxy() -- cheaper than {}
 local STHROTTLE = _G.newproxy() -- for spell-throttle
 
+local burstWindowStart = 0
+local burstEventCount = 0
+local burstActiveUntil = 0
+
+local function recordEventDensity(now)
+	if (now - burstWindowStart) >= 1.0 then
+		burstWindowStart = now
+		burstEventCount = 1
+	else
+		burstEventCount = burstEventCount + 1
+		if burstEventCount >= 12 then
+			burstActiveUntil = now + 2.0
+		end
+	end
+end
+
+local function getEffectiveThrottleTime(throttleType, now)
+	local base = db.throttles[throttleType] or throttleDefaultTimes[throttleType] or 0
+	if base <= 0 then
+		return 0
+	end
+	if db.smartAoEThrottle ~= false and (now or GetTime()) <= burstActiveUntil then
+		return math.max(0.35, base * 1.8)
+	end
+	return base
+end
+
 -- #NODOC
 function module:RunThrottle(force)
 	local now = GetTime()
@@ -1849,7 +1976,7 @@ function module:RunThrottle(force)
 		local goodTime = now
 		local waitStyle = throttleWaitStyles[throttleType]
 		if not waitStyle then
-			local throttleTime = db.throttles[throttleType] or throttleDefaultTimes[throttleType]
+			local throttleTime = getEffectiveThrottleTime(throttleType, now)
 			goodTime = now - throttleTime
 		end
 		for category,v in pairs(w) do
@@ -1997,11 +2124,16 @@ function module:TriggerCombatEvent(category, name, info, throttleDone)
 			end
 		end
 	elseif data.throttle then
+		local now = GetTime()
+		if category == "Incoming" or category == "Outgoing" then
+			recordEventDensity(now)
+		end
 		local throttle = data.throttle
 		local throttleType = throttle[1]
 		local sthrottle = get_sthrottle(info)
+		local effThrottleTime = getEffectiveThrottleTime(throttleType, now)
 
-		if (db.throttles[throttleType] or throttleDefaultTimes[throttleType]) > 0 or (sthrottle and sthrottle.time > 0) then
+		if effThrottleTime > 0 or (sthrottle and sthrottle.time > 0) then
 			if not throttleData[throttleType] then
 				throttleData[throttleType] = newList()
 			end
@@ -2064,7 +2196,7 @@ function module:TriggerCombatEvent(category, name, info, throttleDone)
 					t[STHROTTLE] = sthrottle
 				else
 					if throttleWaitStyles[throttleType] then
-						t[NEXT_TIME] = GetTime() + (db.throttles[throttleType] or throttleDefaultTimes[throttleType])
+						t[NEXT_TIME] = now + effThrottleTime
 					else
 						t[LAST_TIME] = 0
 					end
@@ -2124,8 +2256,25 @@ local function runEvent(category, name, info)
 		else
 			info_filterKey = info[filterKey]
 		end
-		if not ns.Compat.IsSecretValue(info_filterKey) and type(info_filterKey) == "number" and info_filterKey < base then
-			return
+		if not ns.Compat.IsSecretValue(info_filterKey) and type(info_filterKey) == "number" then
+			if info_filterKey < base then
+				return
+			end
+			if not isCrit then
+				local dmgPct = tonumber(db.minDamagePercentHP) or 0
+				local healPct = tonumber(db.minHealPercentHP) or 0
+				if dmgPct > 0 and (actualType == "Incoming damage" or actualType == "Outgoing damage") then
+					local maxHP = ns.Compat.SafeNumber(UnitHealthMax("player"), nil)
+					if maxHP and maxHP > 0 and info_filterKey < (maxHP * dmgPct * 0.01) then
+						return
+					end
+				elseif healPct > 0 and (actualType == "Incoming heals" or actualType == "Outgoing heals") then
+					local maxHP = ns.Compat.SafeNumber(UnitHealthMax("player"), nil)
+					if maxHP and maxHP > 0 and info_filterKey < (maxHP * healPct * 0.01) then
+						return
+					end
+				end
+			end
 		end
 	end
 
@@ -2133,7 +2282,7 @@ local function runEvent(category, name, info)
 	local throttleSuffix
 	if throttle and not db.hideThrottleText then
 		local throttleType = throttle[1]
-		if (db.throttles[throttleType] or throttleDefaultTimes[throttleType]) > 0 then
+		if getEffectiveThrottleTime(throttleType) > 0 then
 			local throttleCountData = throttle[3]
 			if throttleCountData then
 				local func = throttleCountData[#throttleCountData]
@@ -2273,7 +2422,33 @@ local function runEvent(category, name, info)
 	if throttleSuffix then
 		text = text .. throttleSuffix
 	end
-	Parrot:ShowMessage(text, cdb.scrollArea or category, sticky, r, g, b, cdb.font, cdb.fontSize, cdb.fontOutline, icon)
+
+	local schoolR, schoolG, schoolB
+	local dt = not ns.Compat.IsSecretValue(info.damageType) and info.damageType or nil
+	if dt and type(dt) == "number" and db.damageTypes.color and ns.ResolveSchoolKey then
+		local schoolKey = ns.ResolveSchoolKey(dt)
+		local schoolHex = schoolKey and db.damageTypes[schoolKey]
+		if schoolHex then
+			schoolR, schoolG, schoolB = hexColorToTuple(schoolHex)
+		end
+	end
+
+	local forceGlow = (not ns.Compat.IsSecretValue(info.forceGlow) and info.forceGlow) or data.forceGlow or false
+	local glowR = not ns.Compat.IsSecretValue(info.glowR) and info.glowR or nil
+	local glowG = not ns.Compat.IsSecretValue(info.glowG) and info.glowG or nil
+	local glowB = not ns.Compat.IsSecretValue(info.glowB) and info.glowB or nil
+
+	local eventMeta = {
+		amount = info.realAmount or info.amount,
+		isCrit = isCrit or forceGlow,
+		isPeriodic = not ns.Compat.IsSecretValue(info.isPeriodic) and info.isPeriodic or false,
+		unitGUID = (category == "Outgoing") and info.recipientID or info.sourceID,
+		schoolR = glowR or schoolR or (forceGlow and r or nil),
+		schoolG = glowG or schoolG or (forceGlow and g or nil),
+		schoolB = glowB or schoolB or (forceGlow and b or nil),
+	}
+
+	Parrot:ShowMessage(text, cdb.scrollArea or category, sticky, r, g, b, cdb.font, cdb.fontSize, cdb.fontOutline, icon, eventMeta)
 	if cdb.sound then
 		PlaySoundFile(LibSharedMedia:Fetch('sound', cdb.sound), "Master")
 	end
@@ -2357,9 +2532,9 @@ local moreParams = {
 	SPELL_INTERRUPT = { "spellId", "spellName", "spellSchool", "extraSpellID", "extraSpellName", "extraSchool", },
 	SPELL_LEECH = { "spellId", "spellName", "spellSchool", "amount", "powerType", "extraAmount", },
 	SPELL_MISSED = { "spellId", "spellName", "spellSchool", "missType", "isOffHand", "amountMissed", },
-	SPELL_PERIODIC_DAMAGE = { "spellId", "spellName", "spellSchool", "amount", "overkill", "school", "resisted", "blocked", "absorbed", "critical", "glancing", "crushing", "isOffHand", },
+	SPELL_PERIODIC_DAMAGE = { "spellId", "spellName", "spellSchool", "amount", "overkill", "school", "resisted", "blocked", "absorbed", "critical", "glancing", "crushing", "isOffHand", extra = { "info.isPeriodic = true", } },
 	SPELL_PERIODIC_ENERGIZE = { "spellId", "spellName", "spellSchool", "amount", "arg2", "powerType", },
-	SPELL_PERIODIC_HEAL = { "spellId", "spellName", "spellSchool", "amount", "overhealing", "absorbed", "critical", extra = { "info.realAmount = info.amount - info.overhealAmount", } },
+	SPELL_PERIODIC_HEAL = { "spellId", "spellName", "spellSchool", "amount", "overhealing", "absorbed", "critical", extra = { "info.realAmount = info.amount - info.overhealAmount", "info.isPeriodic = true", } },
 	SPELL_PERIODIC_LEECH = { "spellId", "spellName", "spellSchool", "amount", "powerType", "extraAmount", },
 	SPELL_PERIODIC_MISSED = { "spellId", "spellName", "spellSchool", "missType", "isOffHand", "amountMissed", },
 	SPELL_STOLEN = { "spellId", "spellName", "spellSchool", "extraSpellID", "extraSpellName", "extraSchool", "auraType", },

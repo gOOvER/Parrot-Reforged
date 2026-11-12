@@ -12,10 +12,15 @@
 	<Include file="libs\AceLocale-3.0\AceLocale-3.0.xml" />
 	<Include file="libs\AceGUI-3.0\AceGUI-3.0.xml" />
 	<Include file="libs\AceConfig-3.0\AceConfig-3.0.xml" />
+	<Include file="libs\AceSerializer-3.0\AceSerializer-3.0.xml" />
 
 	<Include file="libs\LibSharedMedia-3.0\lib.xml"/>
 	<Include file="libs\AceGUI-3.0-SharedMediaWidgets\widget.xml"/>
 	<Include file="libs\LibSink-2.0\lib.xml"/>
+	<Include file="libs\LibCustomGlow-1.0\LibCustomGlow-1.0.xml"/>
+	<Include file="libs\LibWindow-1.1\lib.xml"/>
+	<Include file="libs\LibQTip-1.0\lib.xml"/>
+	<Include file="libs\LibDeflate\lib.xml"/>
 	<!--@end-no-lib-strip@-->
 
 	<Script file="libs\LibDataBroker-1.1\LibDataBroker-1.1.lua"/>

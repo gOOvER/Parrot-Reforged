@@ -304,6 +304,10 @@ local defaults = {
 		gameHealing = false,
 		gameLowHealth = false,
 		gameReactives = false,
+		uiFontSize = 13,
+		lootCoinIcons = true,
+		minLootQuality = 0,
+		windowPos = {},
 		minimap = {
 			hide = false,
 		},
@@ -344,14 +348,42 @@ function Parrot:TestMessages()
 		self:Print("Addon is disabled - use /parrot toggle to enable it")
 		return
 	end
+	local fireIcon = ns.Compat.GetSpellTexture(133) or "Interface\\Icons\\Spell_Fire_FlameBolt"
+	local critIcon = ns.Compat.GetSpellTexture(11366) or "Interface\\Icons\\Spell_Fire_Fireball02"
+	local dotIcon = ns.Compat.GetSpellTexture(589) or "Interface\\Icons\\Spell_Shadow_ShadowWordPain"
+	local healIcon = ns.Compat.GetSpellTexture(774) or "Interface\\Icons\\Spell_Nature_Rejuvenation"
+	local flashHealIcon = ns.Compat.GetSpellTexture(2061) or "Interface\\Icons\\Spell_Holy_FlashHeal"
+
+	local choices = self:GetScrollAreasChoices()
 	local count = 0
-	for area in next, self:GetScrollAreasChoices() do
+	for area in next, choices do
 		count = count + 1
-		self:ShowMessage(("Parrot test %d"):format(count), area, false, math.random(), math.random(), math.random())
-		self:ShowMessage(("Crit %d!"):format(count), area, true, 1, 1, 0)
+		if area == "Incoming" then
+			self:ShowMessage("-" .. Parrot:ShortenAmount(8420), area, false, 0.95, 0.25, 0.25, nil, nil, nil, "Interface\\Icons\\Ability_MeleeDamage", {
+				amount = 8420, isCrit = false, schoolR = 0.95, schoolG = 0.25, schoolB = 0.25,
+			})
+			self:ShowMessage("+" .. Parrot:ShortenAmount(51800) .. "!", area, true, 0.30, 1.00, 0.45, nil, nil, nil, flashHealIcon, {
+				amount = 51800, isCrit = true, schoolR = 0.30, schoolG = 1.00, schoolB = 0.45,
+			})
+		elseif area == "Notification" then
+			self:ShowMessage("[Hot Streak!]", area, true, 1.00, 0.84, 0.18, nil, nil, nil, critIcon, {
+				isTrigger = true, isCrit = true, schoolR = 1.00, schoolG = 0.84, schoolB = 0.18,
+			})
+		else
+			self:ShowMessage(Parrot:ShortenAmount(14650) .. " (x3)", area, false, 0.68, 0.42, 1.00, nil, nil, nil, dotIcon, {
+				amount = 14650, isCrit = false, schoolR = 0.68, schoolG = 0.42, schoolB = 1.00,
+			})
+			self:ShowMessage(Parrot:ShortenAmount(76420) .. "!", area, true, 1.00, 0.85, 0.20, nil, nil, nil, critIcon, {
+				amount = 76420, isCrit = true, schoolR = 1.00, schoolG = 0.50, schoolB = 0.12,
+			})
+		end
 	end
 	if count == 0 then
-		self:ShowMessage("Parrot test", "Notification", false, 1, 1, 1)
+		self:ShowMessage("Parrot test", "Notification", false, 1, 1, 1, nil, nil, nil, fireIcon)
+	elseif choices["Incoming"] then
+		self:ShowMessage("+" .. Parrot:ShortenAmount(16900), "Incoming", false, 0.22, 0.92, 0.38, nil, nil, nil, healIcon, {
+			amount = 16900, isCrit = false, schoolR = 0.22, schoolG = 0.92, schoolB = 0.38,
+		})
 	end
 end
 
@@ -410,9 +442,17 @@ function Parrot:OnInitialize()
 		input = (input or ""):gsub("^%s+", ""):gsub("%s+$", ""):lower()
 		if input == "test" then
 			self:TestMessages()
+		elseif input == "anchors" or input == "lock" or input == "unlock" or input == "move" then
+			local unlocked = self.GetConfigMode and self:GetConfigMode()
+			self:SetConfigMode(not unlocked)
+		elseif input == "share" or input == "export" or input == "import" then
+			self:ShowConfig("sharing")
 		elseif input == "toggle" then
 			if self:IsEnabled() then self:Disable() else self:Enable() end
 			self:Print(self:IsEnabled() and "enabled" or "disabled")
+			if ns.ConfigWindow and ns.ConfigWindow.RefreshFooter then
+				ns.ConfigWindow:RefreshFooter()
+			end
 		elseif input == "errors" then
 			if #self.errors == 0 then
 				self:Print("no captured errors.")
@@ -425,9 +465,13 @@ function Parrot:OnInitialize()
 				end
 			end
 		elseif input == "" or input == "config" or input == "options" then
-			self:ShowConfig()
+			if ns.ConfigWindow then
+				ns.ConfigWindow:Toggle()
+			else
+				self:ShowConfig()
+			end
 		else
-			self:Print("|cffffffff/parrot|r open config   |cffffffff/parrot test|r sample messages   |cffffffff/parrot toggle|r enable/disable   |cffffffff/parrot errors|r show captured errors")
+			self:Print("|cffffffff/parrot|r config   |cffffffff/parrot anchors|r unlock/lock movers   |cffffffff/parrot test|r demo burst   |cffffffff/parrot share|r import/export   |cffffffff/parrot toggle|r enable/disable")
 		end
 	end
 
@@ -451,27 +495,124 @@ function Parrot:OnInitialize()
 		self:RegisterSink("Parrot", "Parrot Reforged", nil, sink, getScrollAreasChoices, true)
 	end
 
+	local LibQTip = LibStub("LibQTip-1.0", true)
+	local activeTip
+
+	local function ReleaseParrotTooltip()
+		if activeTip and LibQTip then
+			LibQTip:Release(activeTip)
+			activeTip = nil
+		end
+	end
+
+	local function ShowInteractiveLDBTooltip(anchorFrame)
+		if not LibQTip or not anchorFrame then return false end
+		ReleaseParrotTooltip()
+
+		local tip = LibQTip:Acquire("ParrotReforgedLDBTip", 2, "LEFT", "RIGHT")
+		activeTip = tip
+		tip:SmartAnchorTo(anchorFrame)
+		tip:SetAutoHideDelay(0.20, anchorFrame, function()
+			activeTip = nil
+		end)
+		if ns.UIStyle and tip.SetBackdrop then
+			ns.UIStyle.ApplyBox(tip, { 0.06, 0.06, 0.09, 0.96 }, { 0.72, 0.58, 0.18, 0.95 })
+		end
+
+		local ver = (C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetadata("Parrot", "Version"))
+			or (GetAddOnMetadata and GetAddOnMetadata("Parrot", "Version")) or "1.0.0"
+		tip:AddHeader("|TInterface\\Icons\\Spell_Nature_ForceOfNature:16:16:0:0:64:64:5:59:5:59|t  |cffffd100Parrot Reforged|r", "|cff888894v" .. ver .. "|r")
+		tip:AddSeparator(1, 0.55, 0.44, 0.16, 0.75)
+
+		local isEnabled = Parrot:IsEnabled()
+		local statusStr = isEnabled and ("|cff55ff55" .. L["Enabled"] .. "|r") or ("|cffff5555" .. L["Disabled"] .. "|r")
+		local profileStr = "|cffffd100" .. (Parrot.db and Parrot.db:GetCurrentProfile() or "Default") .. "|r"
+		local engineStr = Parrot.combatLogBlocked and ("|cffffaa33" .. L["Fallback Mode"] .. "|r") or ("|cff66ddff" .. L["Full CombatLog"] .. "|r")
+		local unlocked = Parrot.GetConfigMode and Parrot:GetConfigMode()
+		local anchorStr = unlocked and ("|cffffaa33" .. L["Unlocked"] .. "|r") or ("|cff9999a8" .. L["Locked"] .. "|r")
+
+		tip:AddLine("|cffc8c8d0" .. L["Status"] .. "|r", statusStr)
+		tip:AddLine("|cffc8c8d0" .. L["Profile"] .. "|r", profileStr)
+		tip:AddLine("|cffc8c8d0" .. L["Engine"] .. "|r", engineStr)
+		tip:AddLine("|cffc8c8d0" .. L["Scroll areas"] .. "|r", anchorStr)
+
+		tip:AddSeparator(1, 0.35, 0.35, 0.42, 0.65)
+		tip:AddLine("|cffffd100" .. L["Quick Actions"] .. "|r", "")
+
+		local l1 = tip:AddLine("  |cffeedd82• " .. L["Open Configuration"] .. "|r", "|cff888894/parrot|r")
+		tip:SetLineScript(l1, "OnMouseUp", function()
+			ReleaseParrotTooltip()
+			Parrot:ShowConfig()
+		end)
+
+		local l2 = tip:AddLine("  |cffeedd82• " .. (unlocked and L["Lock Anchors"] or L["Unlock Anchors"]) .. "|r", "|cff888894/parrot anchors|r")
+		tip:SetLineScript(l2, "OnMouseUp", function()
+			ReleaseParrotTooltip()
+			Parrot:SetConfigMode(not (Parrot.GetConfigMode and Parrot:GetConfigMode()))
+		end)
+
+		local l3 = tip:AddLine("  |cffeedd82• " .. L["Demo Burst"] .. "|r", "|cff888894/parrot test|r")
+		tip:SetLineScript(l3, "OnMouseUp", function()
+			Parrot:TestMessages()
+		end)
+
+		local l4 = tip:AddLine("  |cffeedd82• " .. L["Import / Export"] .. "|r", "|cff888894/parrot share|r")
+		tip:SetLineScript(l4, "OnMouseUp", function()
+			ReleaseParrotTooltip()
+			Parrot:ShowConfig("sharing")
+		end)
+
+		tip:AddSeparator(1, 0.35, 0.35, 0.42, 0.65)
+		tip:AddLine("|cffeda55f" .. L["Left-Click"] .. "|r", "|cffb8b8c2" .. L["Open Configuration"] .. "|r")
+		tip:AddLine("|cffeda55f" .. L["Right-Click"] .. "|r", "|cffb8b8c2" .. L["Unlock / Lock Anchors"] .. "|r")
+		tip:AddLine("|cffeda55f" .. L["Middle-Click"] .. "|r", "|cffb8b8c2" .. L["Demo Burst"] .. "|r")
+		tip:AddLine("|cffeda55f" .. L["Shift-Click"] .. "|r", "|cffb8b8c2" .. L["Toggle Parrot"] .. "|r")
+
+		tip:Show()
+		return true
+	end
+
 	local LDB = LibStub("LibDataBroker-1.1", true)
 	if LDB then
 		local dataObj = LDB:NewDataObject("Parrot", {
 			type = "launcher",
 			icon = "Interface\\Icons\\Spell_Nature_ForceOfNature",
 			OnClick = function(_, button)
-				if button == "LeftButton" then
-					Parrot:ShowConfig()
-				elseif button == "RightButton" then
-					local sa = Parrot:GetModule("ScrollAreas", true)
-					if sa and Parrot.SetConfigMode then
-						Parrot:SetConfigMode(not sa.configMode)
+				ReleaseParrotTooltip()
+				if IsShiftKeyDown() then
+					if Parrot:IsEnabled() then Parrot:Disable() else Parrot:Enable() end
+					Parrot:Print(Parrot:IsEnabled() and L["Enabled"] or L["Disabled"])
+					if ns.ConfigWindow and ns.ConfigWindow.RefreshFooter then
+						ns.ConfigWindow:RefreshFooter()
 					end
+					return
+				end
+				if button == "LeftButton" then
+					if ns.ConfigWindow then
+						ns.ConfigWindow:Toggle()
+					else
+						Parrot:ShowConfig()
+					end
+				elseif button == "RightButton" then
+					if Parrot.SetConfigMode then
+						Parrot:SetConfigMode(not (Parrot.GetConfigMode and Parrot:GetConfigMode()))
+					end
+				elseif button == "MiddleButton" then
+					Parrot:TestMessages()
 				end
 			end,
+			OnEnter = function(frame)
+				ShowInteractiveLDBTooltip(frame)
+			end,
 			OnTooltipShow = function(tooltip)
+				if LibQTip then return end
 				if not tooltip or not tooltip.AddLine then return end
 				tooltip:AddLine("|cffffd100Parrot Reforged|r")
 				tooltip:AddLine(L["Floating Combat Text of awesomeness. Caw. It'll eat your crackers."], 0.8, 0.8, 0.8, true)
 				tooltip:AddLine(" ")
-				tooltip:AddLine("|cffeda55fLeft-Click:|r " .. (L["Load config"] or "Open Options"), 0.2, 1, 0.2)
+				tooltip:AddLine("|cffeda55f" .. L["Left-Click"] .. ":|r " .. L["Open Configuration"], 0.2, 1, 0.2)
+				tooltip:AddLine("|cffeda55f" .. L["Right-Click"] .. ":|r " .. L["Unlock / Lock Anchors"], 0.2, 1, 0.2)
+				tooltip:AddLine("|cffeda55f" .. L["Middle-Click"] .. ":|r " .. L["Demo Burst"], 0.2, 1, 0.2)
 			end,
 			label = "Parrot Reforged",
 		})
@@ -805,7 +946,7 @@ do
 	LibSharedMedia.RegisterCallback(Parrot, "LibSharedMedia_Registered", rebuild)
 end
 
-function Parrot:ShowConfig()
+function Parrot:EnsureOptionsLoaded()
 	if self.OnOptionsCreate then
 		self:SafeCall("Parrot:OnOptionsCreate", self.OnOptionsCreate, self)
 
@@ -822,8 +963,18 @@ function Parrot:ShowConfig()
 
 		self.OnOptionsCreate = nil
 	end
+end
 
-	AceConfigDialog:Open("Parrot")
+function Parrot:ShowConfig(sectionKey)
+	self:EnsureOptionsLoaded()
+	if type(sectionKey) ~= "string" then
+		sectionKey = nil
+	end
+	if ns.ConfigWindow then
+		ns.ConfigWindow:Open(sectionKey)
+	else
+		AceConfigDialog:Open("Parrot")
+	end
 end
 
 function Parrot:AddOption(name, args)
@@ -869,6 +1020,37 @@ function Parrot:OnOptionsCreate()
 					end
 				end,
 				order = 0,
+			},
+			lootGroup = {
+				type = "group",
+				inline = true,
+				name = L["Loot"],
+				order = 2,
+				args = {
+					lootCoinIcons = {
+						type = "toggle",
+						name = L["Use Coin Icons for Money"],
+						desc = L["Display inline gold, silver, and copper coin icons instead of letter symbols when looting money."],
+						order = 1,
+						get = function() return db.lootCoinIcons ~= false end,
+						set = function(_, val) db.lootCoinIcons = val end,
+					},
+					minLootQuality = {
+						type = "select",
+						name = L["Minimum Loot Quality"],
+						desc = L["Ignore looted items below this quality threshold. Epic and higher items automatically trigger an icon glow."],
+						order = 2,
+						values = {
+							[0] = (_G.ITEM_QUALITY_COLORS and _G.ITEM_QUALITY_COLORS[0] and _G.ITEM_QUALITY_COLORS[0].hex or "|cff9d9d9d") .. (_G.ITEM_QUALITY0_DESC or "Poor") .. "|r",
+							[1] = (_G.ITEM_QUALITY_COLORS and _G.ITEM_QUALITY_COLORS[1] and _G.ITEM_QUALITY_COLORS[1].hex or "|cffffffff") .. (_G.ITEM_QUALITY1_DESC or "Common") .. "|r",
+							[2] = (_G.ITEM_QUALITY_COLORS and _G.ITEM_QUALITY_COLORS[2] and _G.ITEM_QUALITY_COLORS[2].hex or "|cff1eff00") .. (_G.ITEM_QUALITY2_DESC or "Uncommon") .. "|r",
+							[3] = (_G.ITEM_QUALITY_COLORS and _G.ITEM_QUALITY_COLORS[3] and _G.ITEM_QUALITY_COLORS[3].hex or "|cff0070dd") .. (_G.ITEM_QUALITY3_DESC or "Rare") .. "|r",
+							[4] = (_G.ITEM_QUALITY_COLORS and _G.ITEM_QUALITY_COLORS[4] and _G.ITEM_QUALITY_COLORS[4].hex or "|cffa335ee") .. (_G.ITEM_QUALITY4_DESC or "Epic") .. "|r",
+						},
+						get = function() return tonumber(db.minLootQuality) or 0 end,
+						set = function(_, val) db.minLootQuality = tonumber(val) or 0 end,
+					},
+				},
 			},
 			gameText = {
 				type = "group",

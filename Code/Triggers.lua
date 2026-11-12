@@ -38,6 +38,12 @@ local defaults = {
 	profile = {
 		triggers2 = {},
 		dbver2 = 0,
+		autoProcs = true,
+		autoProcSticky = true,
+		autoProcScrollArea = "Notification",
+		autoProcColor = "ffd100",
+		autoProcCooldown = 1.5,
+		ignoredProcs = {},
 	},
 }
 
@@ -951,7 +957,55 @@ function module:OnEnable()
 	for _, ev in ipairs({ "PLAYER_TALENT_UPDATE", "CHARACTER_POINTS_CHANGED", "ACTIVE_TALENT_GROUP_CHANGED", "PLAYER_SPECIALIZATION_CHANGED" }) do
 		pcall(self.RegisterEvent, self, ev, rebuildEffectiveRegistry)
 	end
+	Parrot:RegisterBlizzardEvent(self, "SPELL_ACTIVATION_OVERLAY_GLOW_SHOW", "OnSpellActivationOverlayGlowShow")
 	rebuildEffectiveRegistry()
+end
+
+local autoProcCooldowns = {}
+
+function module:OnSpellActivationOverlayGlowShow(uid, event, rawSpellID)
+	if not db or not db.autoProcs then return end
+	if UnitIsDeadOrGhost("player") then return end
+
+	local spellID = ns.Compat.SafeNumber(rawSpellID, nil)
+	if not spellID or spellID <= 0 then return end
+
+	local spellName = ns.Compat.GetSpellName(spellID)
+	if not spellName or spellName == "" then return end
+
+	if type(db.ignoredProcs) == "table" then
+		if db.ignoredProcs[tostring(spellID)] or db.ignoredProcs[spellName:lower()] then
+			return
+		end
+	end
+
+	-- Avoid duplicate alerts if an active custom/class trigger already handles this spell icon
+	for _, t in next, effectiveRegistry do
+		if t.icon == spellID then
+			return
+		end
+	end
+
+	local now = GetTime()
+	local cd = tonumber(db.autoProcCooldown) or 1.5
+	if autoProcCooldowns[spellID] and (now - autoProcCooldowns[spellID]) < cd then
+		return
+	end
+	autoProcCooldowns[spellID] = now
+
+	local r, g, b = hexColorToTuple(db.autoProcColor or "ffd100")
+	local icon = ns.Compat.GetSpellTexture(spellID)
+	local sticky = (db.autoProcSticky ~= false)
+	local area = db.autoProcScrollArea or "Notification"
+	local label = L["%s!"]:format(spellName)
+
+	Parrot:ShowMessage(label, area, sticky, r, g, b, nil, nil, nil, icon, {
+		isTrigger = true,
+		isCrit = sticky,
+		schoolR = r,
+		schoolG = g,
+		schoolB = b,
+	})
 end
 
 -- no weak table required, there are only very few entries
@@ -1028,7 +1082,13 @@ local function showTrigger(t)
 		Parrot:Flash(rf,gf,bf)
 	end
 
-	Parrot:ShowMessage(t.name, t.scrollArea or "Notification", t.sticky, r, g, b, t.font, t.fontSize, t.outline, icon)
+	Parrot:ShowMessage(t.name, t.scrollArea or "Notification", t.sticky, r, g, b, t.font, t.fontSize, t.outline, icon, {
+		isTrigger = true,
+		isCrit = t.sticky,
+		schoolR = r,
+		schoolG = g,
+		schoolB = b,
+	})
 
 	if t.sound then
 		local sound = LibSharedMedia:Fetch('sound', t.sound)
@@ -1147,6 +1207,125 @@ function module:OnOptionsCreate()
 					end
 					return false
 				end
+			},
+			autoProcsGroup = {
+				type = "group",
+				name = "|cffffd100" .. L["Automatic Class Procs"] .. "|r",
+				desc = L["Automatically display glowing class ability procs (Spell Activation Overlays) across all specs and expansions."],
+				order = 2,
+				args = {
+					desc = {
+						type = "description",
+						name = L["Automatically detects any glowing spell proc from Blizzard's Spell Activation Overlay system (SoD runes, Cata/MoP procs, Retail Midnight talents) with zero manual setup."],
+						fontSize = "medium",
+						order = 1,
+					},
+					autoProcs = {
+						type = "toggle",
+						name = L["Enable Automatic Class Procs"],
+						desc = L["Show floating proc alerts with spell icon and glow whenever an ability lights up."],
+						width = "full",
+						order = 2,
+						get = function() return db.autoProcs end,
+						set = function(_, val) db.autoProcs = val end,
+					},
+					autoProcSticky = {
+						type = "toggle",
+						name = L["Sticky (Crit Glow)"],
+						desc = L["Display automatic procs using sticky Impact style and LibCustomGlow highlight."],
+						order = 3,
+						disabled = function() return not db.autoProcs end,
+						get = function() return db.autoProcSticky ~= false end,
+						set = function(_, val) db.autoProcSticky = val end,
+					},
+					autoProcScrollArea = {
+						type = "select",
+						name = L["Scroll area"],
+						desc = L["Which scroll area to show automatic proc alerts in."],
+						values = Parrot:GetScrollAreasChoices(),
+						order = 4,
+						disabled = function() return not db.autoProcs end,
+						get = function() return db.autoProcScrollArea or "Notification" end,
+						set = function(_, val) db.autoProcScrollArea = val end,
+					},
+					autoProcColor = {
+						type = "color",
+						name = L["Color"],
+						desc = L["Text color for automatic proc alerts."],
+						order = 5,
+						disabled = function() return not db.autoProcs end,
+						get = function() return hexColorToTuple(db.autoProcColor or "ffd100") end,
+						set = function(_, r, g, b)
+							db.autoProcColor = ("%02x%02x%02x"):format(r * 255, g * 255, b * 255)
+						end,
+					},
+					autoProcCooldown = {
+						type = "range",
+						name = L["Proc Cooldown (s)"],
+						desc = L["Minimum seconds before the same spell proc can alert again."],
+						min = 0,
+						max = 15,
+						step = 0.5,
+						order = 6,
+						disabled = function() return not db.autoProcs end,
+						get = function() return tonumber(db.autoProcCooldown) or 1.5 end,
+						set = function(_, val) db.autoProcCooldown = val end,
+					},
+					addIgnore = {
+						type = "input",
+						name = L["Ignore Spell (ID or Name)"],
+						desc = L["Enter a Spell ID or exact spell name to suppress its automatic proc alert."],
+						order = 7,
+						get = function() return "" end,
+						set = function(_, val)
+							val = (val or ""):gsub("^%s+", ""):gsub("%s+$", "")
+							if val == "" then return end
+							db.ignoredProcs = db.ignoredProcs or {}
+							local key = tonumber(val) and tostring(tonumber(val)) or val:lower()
+							db.ignoredProcs[key] = val
+						end,
+					},
+					removeIgnore = {
+						type = "select",
+						name = L["Remove Ignored Proc"],
+						desc = L["Select an ignored spell to re-enable its automatic proc alert."],
+						order = 8,
+						hidden = function()
+							return type(db.ignoredProcs) ~= "table" or next(db.ignoredProcs) == nil
+						end,
+						values = function()
+							local out = {}
+							if type(db.ignoredProcs) == "table" then
+								for k, raw in pairs(db.ignoredProcs) do
+									local num = tonumber(k)
+									local sName = num and ns.Compat.GetSpellName(num)
+									out[k] = sName and ("%s (%d)"):format(sName, num) or tostring(raw)
+								end
+							end
+							return out
+						end,
+						get = function() return nil end,
+						set = function(_, key)
+							if type(db.ignoredProcs) == "table" then
+								db.ignoredProcs[key] = nil
+							end
+						end,
+					},
+					testAutoProc = {
+						type = "execute",
+						name = L["Test"],
+						desc = L["Fire a sample automatic class proc alert."],
+						order = 9,
+						func = function()
+							local r, g, b = hexColorToTuple(db.autoProcColor or "ffd100")
+							local icon = ns.Compat.GetSpellTexture(11366) or "Interface\\Icons\\Spell_Fire_Fireball02"
+							local sticky = (db.autoProcSticky ~= false)
+							Parrot:ShowMessage("[Hot Streak!]", db.autoProcScrollArea or "Notification", sticky, r, g, b, nil, nil, nil, icon, {
+								isTrigger = true, isCrit = sticky, schoolR = r, schoolG = g, schoolB = b,
+							})
+						end,
+					},
+				},
 			},
 		}
 	}
@@ -1332,7 +1511,13 @@ function module:OnOptionsCreate()
 			local rf, gf, bf = hexColorToTuple(t.flashcolor or 'ffffff')
 			Parrot:Flash(rf,gf,bf)
 		end
-		Parrot:ShowMessage(t.name, t.scrollArea or "Notification", t.sticky, r, g, b, t.font, t.fontSize, t.outline, getIconPath(t.icon))
+		Parrot:ShowMessage(t.name, t.scrollArea or "Notification", t.sticky, r, g, b, t.font, t.fontSize, t.outline, getIconPath(t.icon), {
+			isTrigger = true,
+			isCrit = t.sticky,
+			schoolR = r,
+			schoolG = g,
+			schoolB = b,
+		})
 		if t.sound then
 			local sound = LibSharedMedia:Fetch('sound', t.sound)
 			if sound then

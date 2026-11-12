@@ -31,31 +31,51 @@ end
 --============================================================================]]
 
 local SchoolParser = {
-	[1]  = "Physical",
-	[2]  = "Holy",
-	[4]  = "Fire",
-	[8]  = "Nature",
-	[9]  = "Stormstrike",
-	[16] = "Frost",
-	[20] = "FrostFire",
-	[24] = "Froststorm",
-	[32] = "Shadow",
-	[33] = "Shadowstrike",
-	[34] = "Twilight",
-	[36] = "Shadowflame",
-	[40] = "Plague",
-	[48] = "Shadowfrost",
-	[64] = "Arcane",
-	[65] = "Spellstrike",
-	[68] = "Spellfire",
-	[72] = "Astral",
-	[80] = "Spellfrost",
-	[96] = "Spellshadow",
-	[28] = "Elemental",
+	[1]   = "Physical",
+	[2]   = "Holy",
+	[4]   = "Fire",
+	[8]   = "Nature",
+	[9]   = "Stormstrike",
+	[12]  = "Elemental", -- Volcanic / Fire+Nature
+	[16]  = "Frost",
+	[20]  = "Frostfire",
+	[24]  = "Froststorm",
+	[28]  = "Elemental",
+	[32]  = "Shadow",
+	[33]  = "Shadowstrike",
+	[34]  = "Twilight",
+	[36]  = "Shadowflame",
+	[40]  = "Plague",
+	[48]  = "Shadowfrost",
+	[64]  = "Arcane",
+	[65]  = "Spellstrike",
+	[68]  = "Spellfire",
+	[72]  = "Astral",
+	[80]  = "Spellfrost",
+	[96]  = "Spellshadow",
+	[106] = "Astral",
 	[124] = "Chaos", -- Chromatic
 	[126] = "Magic",
 	[127] = "Chaos",
 }
+
+local function resolveSchoolKey(dt)
+	if type(dt) ~= "number" then
+		return "Physical"
+	end
+	local exact = SchoolParser[dt]
+	if exact then
+		return exact
+	end
+	if bit_band(dt, 64) ~= 0 then return "Arcane" end
+	if bit_band(dt, 32) ~= 0 then return "Shadow" end
+	if bit_band(dt, 16) ~= 0 then return "Frost" end
+	if bit_band(dt, 8) ~= 0 then return "Nature" end
+	if bit_band(dt, 4) ~= 0 then return "Fire" end
+	if bit_band(dt, 2) ~= 0 then return "Holy" end
+	return "Physical"
+end
+ns.ResolveSchoolKey = resolveSchoolKey
 
 local PowerTypeParser = setmetatable({
 	[-2] = _G.HEALTH,
@@ -94,7 +114,7 @@ end })
 
 local coloredDamageAmount = function(info)
 	local dt = not ns.Compat.IsSecretValue(info.damageType) and info.damageType or 1
-	local damageType = SchoolParser[dt or 1]
+	local damageType = resolveSchoolKey(dt or 1)
 	local amount = Parrot:ShortenAmount(info.amount)
 
 	if db.damageTypes.color and db.damageTypes[damageType] then
@@ -450,11 +470,28 @@ local short_format_texts = {
 	[" (%d heals)"] = " (%dx)",
 }
 
+local function formatModernBadge(numNorm, numCrit)
+	local total = numNorm + numCrit
+	if total <= 1 then
+		return nil
+	end
+	if numCrit == 0 then
+		return (" |cffb8c0cc\195\151%d|r"):format(total)
+	elseif numNorm == 0 then
+		return (" |cffffd100\195\151%d!|r"):format(numCrit)
+	else
+		return (" |cffb8c0cc\195\151%d|r |cffffd100(%d!)|r"):format(total, numCrit)
+	end
+end
+
 local function damageThrottleFunc(info)
-	local LS = db.useShortThrottleText and short_format_texts or long_format_texts
 	local numNorm = info.throttleCount_isCrit_false or 0
 	local numCrit = info.throttleCount_isCrit_true or 0
 	info.isCrit = numCrit > 0
+	if db.useShortThrottleText and db.modernThrottleBadge ~= false then
+		return formatModernBadge(numNorm, numCrit)
+	end
+	local LS = db.useShortThrottleText and short_format_texts or long_format_texts
 	if numNorm == 1 then
 		if numCrit == 1 then
 			return LS[" (%d hit, %d crit)"]:format(1, 1)
@@ -486,6 +523,9 @@ end
 local function missThrottleFunc(info)
 	local num = info.throttleCount or 0
 	if num > 1 then
+		if db.useShortThrottleText and db.modernThrottleBadge ~= false then
+			return (" |cffb8c0cc\195\151%d|r"):format(num)
+		end
 		return (" (%dx)"):format(num)
 	else
 		return ""
@@ -493,10 +533,13 @@ local function missThrottleFunc(info)
 end
 
 local healThrottleFunc = function(info)
-	local LS = db.useShortThrottleText and short_format_texts or long_format_texts
 	local numNorm = info.throttleCount_isCrit_false or 0
 	local numCrit = info.throttleCount_isCrit_true or 0
 	info.isCrit = numCrit > 0
+	if db.useShortThrottleText and db.modernThrottleBadge ~= false then
+		return formatModernBadge(numNorm, numCrit)
+	end
+	local LS = db.useShortThrottleText and short_format_texts or long_format_texts
 	if numNorm == 1 then
 		if numCrit == 1 then
 			return LS[" (%d heal, %d crit)"]:format(1, 1)
@@ -2295,6 +2338,10 @@ end
 -- Killing blows
 --============================================================================]]
 
+local function retrieveKillingBlowIcon(info)
+	return retrieveIconFromAbilityName(info) or "Interface\\TargetingFrame\\UI-RaidTargetingIcon_8"
+end
+
 Parrot:RegisterCombatEvent{
 	category = "Notification",
 	subCategory = L["Killing blows"],
@@ -2307,13 +2354,15 @@ Parrot:RegisterCombatEvent{
 	tagTranslations = {
 		Name = retrieveDestName,
 		Skill = function(info) return info.abilityName or PLAYERSTAT_MELEE_COMBAT end,
+		Icon = retrieveKillingBlowIcon,
 	},
 	tagTranslationsHelp = {
 		Name = L["The name of the enemy slain."],
 		Skill = L["The spell or ability used to slay the enemy."],
 	},
-	color = "5555ff", -- semi-light blue
+	color = "ff4444",
 	sticky = true,
+	forceGlow = true,
 	throttle = killingBlowThrottle,
 }
 
@@ -2329,13 +2378,15 @@ Parrot:RegisterCombatEvent{
 	tagTranslations = {
 		Name = retrieveDestName,
 		Skill = function(info) return info.abilityName or PLAYERSTAT_MELEE_COMBAT end,
+		Icon = retrieveKillingBlowIcon,
 	},
 	tagTranslationsHelp = {
 		Name = L["The name of the enemy slain."],
 		Skill = L["The spell or ability used to slay the enemy."],
 	},
-	color = "5555ff", -- semi-light blue
+	color = "ffaa22",
 	sticky = true,
+	forceGlow = true,
 	throttle = killingBlowThrottle,
 }
 
