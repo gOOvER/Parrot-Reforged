@@ -499,9 +499,16 @@ function Parrot:OnInitialize()
 	local activeTip
 
 	local function ReleaseParrotTooltip()
-		if activeTip and LibQTip then
-			LibQTip:Release(activeTip)
+		if not LibQTip then return end
+		if activeTip then
+			local t = activeTip
 			activeTip = nil
+			if not LibQTip.IsAcquired or LibQTip:IsAcquired("ParrotReforgedLDBTip") then
+				LibQTip:Release(t)
+			end
+			if t.Hide then
+				t:Hide()
+			end
 		end
 	end
 
@@ -511,10 +518,6 @@ function Parrot:OnInitialize()
 
 		local tip = LibQTip:Acquire("ParrotReforgedLDBTip", 2, "LEFT", "RIGHT")
 		activeTip = tip
-		tip:SmartAnchorTo(anchorFrame)
-		tip:SetAutoHideDelay(0.20, anchorFrame, function()
-			activeTip = nil
-		end)
 		if ns.UIStyle and ns.UIStyle.StyleTooltip then
 			ns.UIStyle.StyleTooltip(tip)
 		end
@@ -568,7 +571,9 @@ function Parrot:OnInitialize()
 		tip:AddLine("|cffeda55f" .. L["Middle-Click"] .. "|r", "|cffb8b8c2" .. L["Demo Burst"] .. "|r")
 		tip:AddLine("|cffeda55f" .. L["Shift-Click"] .. "|r", "|cffb8b8c2" .. L["Toggle Parrot"] .. "|r")
 
+		tip:SmartAnchorTo(anchorFrame)
 		tip:Show()
+		tip:SetAutoHideDelay(0.20, anchorFrame)
 		return true
 	end
 
