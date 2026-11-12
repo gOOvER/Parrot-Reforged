@@ -261,7 +261,7 @@ local function CreateMainWindow()
 			sep:SetColorTexture(0.45, 0.36, 0.14, 0.55)
 			yOff = yOff - 10
 		end
-		local navBtn = UIStyle.CreateNavButton(sidebar, L[item.labelKey] or item.labelKey, item.icon, 34)
+		local navBtn = UIStyle.CreateNavButton(sidebar, rawget(L, item.labelKey) or item.labelKey, item.icon, 34)
 		navBtn:SetPoint("TOPLEFT", 8, yOff)
 		navBtn:SetPoint("TOPRIGHT", -8, yOff)
 		navBtn:SetScript("OnClick", function()

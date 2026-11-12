@@ -84,7 +84,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Reputation Gain Crash on Classic/TBC/Wrath/Cata/MoP (`Code/Parrot.lua`, `Data/PointGains.lua`)**: Guarded `Parrot.Deformat` and `_G.FACTION_STANDING_INCREASED_ACCOUNT_WIDE` against `nil` global format strings on non-Warband clients.
 - **Expansion-Specific Blizzard Events (`Code/Parrot.lua`, `Code/Triggers.lua`, `Data/TriggerConditions.lua`, `Data/PointGains.lua`, `Data/Loot.lua`)**: Wrapped `RegisterEvent` calls in `pcall` and guarded events not present on all flavors (`SPELL_ACTIVATION_OVERLAY_SHOW`, `CHAT_MSG_CURRENCY`, `PLAYER_FOCUS_CHANGED`, `PET_BAR_HIDEGRID`, `PLAYER_TALENT_UPDATE`, `CHARACTER_POINTS_CHANGED`).
 - **Alternate Power & Power Type Enum Fallbacks (`Data/CombatEvents.lua`, `Data/TriggerConditions.lua`)**: Added fallback `PowerType` table and nil-guards when `ALTERNATE_POWER_INDEX` or modern power types are absent in Classic clients.
-- **Complete `enUS` & `deDE` Localization (`Locales/enUS.lua`, `Locales/deDE.lua`)**: Added all missing locale entries and German translations for `Warrior Stance`, `Not in Warrior Stance`, `Hide throttle text`, `Only show crits`, and Minimap icon options.
+- **Complete `enUS` & `deDE` Localization (`Locales/enUS.lua`, `Locales/deDE.lua`, `Code/ConfigWindow.lua`)**: Added all missing locale entries and German translations for `Profiles`, `Use ElvUI font`, `Warrior Stance`, `Not in Warrior Stance`, `Hide throttle text`, `Only show crits`, and Minimap icon options, and guarded sidebar `NAV_ITEMS` lookups with `rawget`.
 
 ---
 

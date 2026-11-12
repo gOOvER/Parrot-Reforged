@@ -755,3 +755,4 @@ L["Renown"] = true
 L["New renown level reached."] = true
 L["Use ElvUI font"] = true
 L["Automatically use ElvUI's configured general/combat font for floating combat text."] = true
+L["Profiles"] = true
