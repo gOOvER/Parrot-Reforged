@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-11-14
+
 ### Fixed
 - **Retail `LibCustomGlow-1.0` Secret-Number Crash (`Code/Display.lua`)**: Guarded `_PixelGlowParrotGlow` / `_AutoCastGlowParrotGlow` `OnUpdate` handlers against secret `GetSize()` values in WoW 12.0+, and anchored left-side spell icon holders directly to the scroll frame content rather than the `FontString` so secret combat text widths cannot taint icon geometry.
 
