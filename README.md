@@ -77,3 +77,9 @@
 - **Reforged Modernization**: **gOOvER** ([goover.dev](https://www.goover.dev))
 - **License**: [GNU Lesser General Public License v2.1 (LGPL-2.1)](LICENSE)
 - **Support Development**: [donate.goover.dev](https://donate.goover.dev) • [Ko-fi](https://ko-fi.com/oldnoob) • [Buy Me a Coffee](https://www.buymeacoffee.com/goover)
+
+---
+
+## 🐛 Bug Reports & Feedback
+
+Found a bug or have a feature request? Please report it on the **[GitHub Issue Tracker](https://github.com/gOOvER/Parrot-Reforged/issues)** (please include your WoW client version, addon version, and any Lua errors if available).
