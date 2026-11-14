@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Pooled `LibCustomGlow-1.0` `OnUpdate` Guard (`Code/Display.lua`)**: Re-wrap `OnUpdate` whenever `LibCustomGlow` acquires a pooled glow frame and overwrites `OnUpdate` (comparing against `_parrotWrappedOnUpdate` instead of a one-time `_parrotGuarded` flag).
+
 ## [1.0.1] - 2026-11-14
 
 ### Fixed

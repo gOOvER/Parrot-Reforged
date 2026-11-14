@@ -7,7 +7,7 @@
 ## Interface-Titan: 38002
 ## Interface-Cata: 40402
 ## Interface-Mists: 50503, 50504
-## Title: Parrot Reforged |cff00aa001.0.1|r
+## Title: Parrot Reforged |cff00aa001.0.2|r
 ## Notes: Floating Combat Text of awesomeness. Caw. It'll eat your crackers.
 ## Notes-esES: Texto de combate flotante increíble. ¡Graznido! Se comerá tus galletas.
 ## Notes-esMX: Texto de combate flotante increíble. ¡Graznido! Se comerá tus galletas.
@@ -20,7 +20,7 @@
 ## Notes-zhCN: 绝妙的浮动战斗文本。来人，喂公子吃饼。真香。
 ## Notes-zhTW: 絕妙的戰鬥記錄指示器。w
 ## Author: ckknight, profalbert, nebula, gOOvER
-## Version: 1.0.1
+## Version: 1.0.2
 ## X-Date: 2026-11-14
 ## Category: Combat
 ## X-Credits: ckknight, profalbert, nebula

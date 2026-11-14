@@ -229,21 +229,22 @@ local function guardGlowOnUpdate(holder, fieldName)
 		return
 	end
 	local glowFrame = holder[fieldName]
-	if not glowFrame or glowFrame._parrotGuarded or not glowFrame.GetScript then
+	if not glowFrame or not glowFrame.GetScript then
 		return
 	end
 	local origOnUpdate = glowFrame:GetScript("OnUpdate")
-	if not origOnUpdate then
+	if not origOnUpdate or origOnUpdate == glowFrame._parrotWrappedOnUpdate then
 		return
 	end
-	glowFrame._parrotGuarded = true
-	glowFrame:SetScript("OnUpdate", function(self, elapsed)
+	local wrapped = function(self, elapsed)
 		local w, h = self:GetSize()
 		if issecretvalue(w) or issecretvalue(h) then
 			return
 		end
 		return origOnUpdate(self, elapsed)
-	end)
+	end
+	glowFrame._parrotWrappedOnUpdate = wrapped
+	glowFrame:SetScript("OnUpdate", wrapped)
 end
 
 local function stopIconGlow(holder)
