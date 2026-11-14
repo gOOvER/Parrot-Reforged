@@ -8,7 +8,7 @@
   [![Code Quality](https://github.com/gOOvER/Parrot-Reforged/actions/workflows/quality.yml/badge.svg)](https://github.com/gOOvER/Parrot-Reforged/actions/workflows/quality.yml)
   [![Release](https://github.com/gOOvER/Parrot-Reforged/actions/workflows/release.yml/badge.svg)](https://github.com/gOOvER/Parrot-Reforged/actions/workflows/release.yml)
   [![GitHub Release](https://img.shields.io/github/v/release/gOOvER/Parrot-Reforged?include_prereleases&label=Version&color=brightgreen&logo=github)](https://github.com/gOOvER/Parrot-Reforged/releases/latest)
-  [![CurseForge](https://img.shields.io/badge/CurseForge-Parrot%20Reforged-f16436?logo=curseforge&logoColor=white)](https://www.curseforge.com/wow/addons/parrot-reforged)
+  [![CurseForge](https://img.shields.io/badge/CurseForge-Parrot%20Reforged-f16436?logo=curseforge&logoColor=white)](https://www.curseforge.com/wow/addons/parrrot-reforged)
   [![Wago.io](https://img.shields.io/badge/Wago.io-Parrot%20Reforged-c1272d?logo=wagtail&logoColor=white)](https://addons.wago.io/addons/parrot-reforged)
   [![WoW Versions](https://img.shields.io/badge/WoW-Retail%20%7C%20MoP%20%7C%20Cata%20%7C%20Wrath%20%7C%20TBC%20%7C%20Classic%20%7C%20Forever-f8b700?logo=battle.net&logoColor=white)](#-supported-wow-versions)
   [![License: LGPL v2.1](https://img.shields.io/badge/License-LGPLv2.1-blue.svg)](LICENSE)
