@@ -15,6 +15,7 @@ local Easing = ns.Easing
 local DisablePixelSnap = Easing and Easing.DisablePixelSnap or function() end
 local SafeNumber = ns.Compat.SafeNumber
 local SafeUnitGUID = ns.Compat.SafeUnitGUID
+local issecretvalue = _G.issecretvalue
 
 local newList, del = Parrot.newList, Parrot.del
 local math_max, math_min, math_sqrt = math.max, math.min, math.sqrt
@@ -223,6 +224,28 @@ end
 
 local glowColorScratch = { 1, 0.82, 0.15, 0.95 }
 
+local function guardGlowOnUpdate(holder, fieldName)
+	if not issecretvalue or not holder then
+		return
+	end
+	local glowFrame = holder[fieldName]
+	if not glowFrame or glowFrame._parrotGuarded or not glowFrame.GetScript then
+		return
+	end
+	local origOnUpdate = glowFrame:GetScript("OnUpdate")
+	if not origOnUpdate then
+		return
+	end
+	glowFrame._parrotGuarded = true
+	glowFrame:SetScript("OnUpdate", function(self, elapsed)
+		local w, h = self:GetSize()
+		if issecretvalue(w) or issecretvalue(h) then
+			return
+		end
+		return origOnUpdate(self, elapsed)
+	end)
+end
+
 local function stopIconGlow(holder)
 	if not holder or not holder._activeGlowStyle then
 		return
@@ -249,6 +272,12 @@ local function startIconGlow(holder, r, g, b)
 	if not glow or not holder or not db.critGlow then
 		return
 	end
+	if issecretvalue then
+		local hw, hh = holder:GetSize()
+		if issecretvalue(hw) or issecretvalue(hh) then
+			return
+		end
+	end
 	stopIconGlow(holder)
 
 	local style = db.critGlowStyle or "PIXEL"
@@ -268,6 +297,7 @@ local function startIconGlow(holder, r, g, b)
 		local ok = pcall(glow.AutoCastGlow_Start, holder, glowColorScratch, 8, 0.25, 1.0, 1, 1, "ParrotGlow")
 		if ok then
 			holder._activeGlowStyle = "AUTOCAST"
+			guardGlowOnUpdate(holder, "_AutoCastGlowParrotGlow")
 		end
 	elseif style == "BUTTON" and glow.ButtonGlow_Start then
 		local ok = pcall(glow.ButtonGlow_Start, holder, glowColorScratch, 0.15)
@@ -287,6 +317,7 @@ local function startIconGlow(holder, r, g, b)
 		local ok = pcall(glow.PixelGlow_Start, holder, glowColorScratch, 6, 0.28, nil, 1.5, 1, 1, false, "ParrotGlow")
 		if ok then
 			holder._activeGlowStyle = "PIXEL"
+			guardGlowOnUpdate(holder, "_PixelGlowParrotGlow")
 		end
 	end
 end
@@ -979,8 +1010,8 @@ function module:ShowMessage(text, area, sticky, r, g, b, font, fontSize, outline
 			holder:SetPoint("LEFT", fs, "RIGHT", gap, 0)
 			fs:SetPoint("LEFT", content, "LEFT", 0, 0)
 		else
-			holder:SetPoint("RIGHT", fs, "LEFT", -gap, 0)
-			fs:SetPoint("RIGHT", content, "RIGHT", 0, 0)
+			holder:SetPoint("LEFT", content, "LEFT", 0, 0)
+			fs:SetPoint("LEFT", holder, "RIGHT", gap, 0)
 		end
 	else
 		fs:SetPoint("LEFT", content, "LEFT", 0, 0)
