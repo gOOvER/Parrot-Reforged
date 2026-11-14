@@ -21,13 +21,14 @@
 ## Notes-zhTW: 絕妙的戰鬥記錄指示器。w
 ## Author: ckknight, profalbert, nebula, gOOvER
 ## Version: 1.0.0
-## X-Date: 2026-11-12
+## X-Date: 2026-11-14
 ## Category: Combat
 ## X-Credits: ckknight, profalbert, nebula
 ## X-Category: Combat
 ## X-License: LGPL-2.1
 ## X-Website: https://github.com/gOOvER/Parrot-Reforged
-## X-Curse-Project-ID: 101768
+## X-Curse-Project-ID: 1800712
+## X-Wago-ID: 4N2kM46L
 ## IconTexture: Interface\Icons\Spell_Nature_ForceOfNature
 ## AddonCompartmentFunc: Parrot_OnAddonCompartmentClick
 ## AddonCompartmentFuncOnEnter: Parrot_OnAddonCompartmentEnter

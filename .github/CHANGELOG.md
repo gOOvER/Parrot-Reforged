@@ -5,7 +5,9 @@ All notable changes to **Parrot Reforged** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.0.0] - Unreleased
+## [Unreleased]
+
+## [1.0.0] - 2026-11-14
 
 ### Added
 - **Parrot Reforged Rebranding**: Renamed from `Parrot 2` / `Parrot 3` to **Parrot Reforged** with unified multi-flavor `Parrot.toc` supporting Retail (`12.0+`), MoP Classic (`5.5`), Cata Classic (`4.4`), Wrath Classic (`3.4`), TBC Anniversary (`2.5`), Classic Forever (`1.15` / `1.6`), and Classic Era (`1.15`).
